@@ -275,10 +275,8 @@ Add to your Claude Code settings (`~/.claude/settings.json` or project-level `.c
         "run", "--rm", "-i",
         "--network", "qdrant-memory_default",
         "-e", "QDRANT_HOST=http://qdrant-memory-db",
-        "-e", "QDRANT_PORT=6333",
-        "-e", "OPENAI_API_KEY=your-key-here",
-        "-e", "APP_KEY=base64:your-app-key-here",
-        "-v", "buddy_db:/var/www/html/database",
+        "-v", "/home/iclaborda/Aerolambda/buddy/.env:/var/www/html/.env",
+        "-v", "/home/iclaborda/Aerolambda/buddy/database:/var/www/html/database",
         "buddy-app",
         "php", "artisan", "buddy:mcp-server"
       ]
@@ -287,7 +285,9 @@ Add to your Claude Code settings (`~/.claude/settings.json` or project-level `.c
 }
 ```
 
-**Prerequisites:** Build the image once with `docker compose build` from the Buddy directory.
+Secrets (`OPENAI_API_KEY`, `APP_KEY`) are read from the mounted `.env` file — they never appear in the Claude config. Only the Docker network override (`QDRANT_HOST`) is passed as `-e` because the hostname differs inside the container network.
+
+**Prerequisites:** Build the image once with `docker compose build` from the Buddy directory. Set your API keys in the Buddy `.env` file.
 
 ### Starting the MCP Server Directly
 
@@ -296,10 +296,8 @@ Add to your Claude Code settings (`~/.claude/settings.json` or project-level `.c
 docker run --rm -i \
   --network qdrant-memory_default \
   -e QDRANT_HOST=http://qdrant-memory-db \
-  -e QDRANT_PORT=6333 \
-  -e OPENAI_API_KEY=sk-... \
-  -e APP_KEY=base64:... \
-  -v buddy_db:/var/www/html/database \
+  -v /path/to/buddy/.env:/var/www/html/.env \
+  -v /path/to/buddy/database:/var/www/html/database \
   buddy-app \
   php artisan buddy:mcp-server
 

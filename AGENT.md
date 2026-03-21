@@ -209,10 +209,8 @@ Connect using stdio transport in Claude Code settings:
         "run", "--rm", "-i",
         "--network", "qdrant-memory_default",
         "-e", "QDRANT_HOST=http://qdrant-memory-db",
-        "-e", "QDRANT_PORT=6333",
-        "-e", "OPENAI_API_KEY=your-key-here",
-        "-e", "APP_KEY=base64:your-app-key-here",
-        "-v", "buddy_db:/var/www/html/database",
+        "-v", "/home/iclaborda/Aerolambda/buddy/.env:/var/www/html/.env",
+        "-v", "/home/iclaborda/Aerolambda/buddy/database:/var/www/html/database",
         "buddy-app",
         "php", "artisan", "buddy:mcp-server"
       ]
@@ -221,7 +219,9 @@ Connect using stdio transport in Claude Code settings:
 }
 ```
 
-**Prerequisite:** Build the image once: `docker compose build` from Buddy's directory.
+Secrets (`OPENAI_API_KEY`, `APP_KEY`) are read from the mounted `.env` file — never exposed in the config JSON. Only the Qdrant network hostname is overridden via `-e`.
+
+**Prerequisite:** Build the image once: `docker compose build` from Buddy's directory. Set your API keys in the Buddy `.env` file.
 
 ### buddy.submit_problem
 
