@@ -78,22 +78,28 @@ INSTRUCTIONS;
                 ->required(),
             'recommended_plan' => $schema->array()
                 ->description('Ordered list of concrete steps to implement the solution. Empty if rejected.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
             'rejected_reasons' => $schema->array()
                 ->description('Reasons why the problem cannot be resolved yet. Empty if accepted.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
             'required_followups' => $schema->array()
                 ->description('Specific evidence, tests, or information needed before re-evaluation.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
             'risks' => $schema->array()
                 ->description('Potential risks or side effects of the recommended solution.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
             'next_actions' => $schema->array()
                 ->description('Immediate next actions for the primary agent.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
             'memory_hits' => $schema->array()
                 ->description('Summaries of relevant past episodes found in memory.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
         ];
     }
 
