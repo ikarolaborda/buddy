@@ -9,37 +9,26 @@ services:
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
-      - buddy_db:/var/www/html/database
-    env_file: .env
     environment:
       - QDRANT_HOST=http://qdrant-memory-db
       - QDRANT_PORT=6333
     networks:
       - qdrant-memory_default
-    command: >
-      sh -c "touch database/database.sqlite &&
-             php artisan migrate --force &&
-             php artisan serve --host=0.0.0.0"
+    command: ["php", "artisan", "serve", "--host=0.0.0.0"]
 
   queue:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
     image: buddy-app
+    depends_on:
+      - app
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
-      - buddy_db:/var/www/html/database
-    env_file: .env
     environment:
       - QDRANT_HOST=http://qdrant-memory-db
       - QDRANT_PORT=6333
     networks:
       - qdrant-memory_default
-    command: php artisan queue:listen --tries=1 --timeout=180
-
-volumes:
-  buddy_db:
+    command: ["php", "artisan", "queue:listen", "--tries=1", "--timeout=180"]
 
 networks:
   qdrant-memory_default:

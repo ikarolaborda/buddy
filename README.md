@@ -99,23 +99,36 @@ php artisan migrate
 composer dev
 ```
 
-### Docker Setup
+### Docker Setup (recommended)
 
-Buddy's Docker setup connects to your existing Qdrant instance running on the `qdrant-memory_default` network. No PHP 8.5 required on the host.
+No PHP 8.5 required on the host. The Docker entrypoint automatically bootstraps a fresh clone:
 
 ```bash
-# Build the image
+# Clone and start — that's it
+git clone https://github.com/ikarolaborda/buddy.git
+cd buddy
 docker compose build
-
-# Start app + queue worker
 docker compose up -d
+```
+
+The entrypoint detects a fresh clone and automatically:
+1. Copies `.env.example` to `.env` (if `.env` is missing)
+2. Installs Composer dependencies inside the container (if `vendor/` is missing)
+3. Generates `APP_KEY` (if not set)
+4. Creates the SQLite database and runs migrations (if database is missing)
+
+If everything is already present, the entrypoint skips all bootstrap steps.
+
+After startup, set your OpenAI API key in `.env`:
+```bash
+# Edit .env and set OPENAI_API_KEY=sk-...
 ```
 
 This starts two services:
 - **app** — Laravel HTTP server on port 8000
 - **queue** — Background queue worker for async evaluations
 
-Both connect to the existing Qdrant container (`qdrant-memory-db`) via the `qdrant-memory_default` Docker network.
+Both connect to your existing Qdrant container (`qdrant-memory-db`) via the `qdrant-memory_default` Docker network.
 
 ## Configuration
 

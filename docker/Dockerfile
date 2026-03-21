@@ -20,14 +20,14 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
+# Install dependencies into the image (used when vendor/ is not mounted from host)
 COPY composer.json composer.lock ./
 RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 
 COPY . .
 RUN composer dump-autoload --optimize
 
-# Create database directory and copy entrypoint
-RUN mkdir -p database
+# Smart entrypoint: bootstraps .env, vendor, APP_KEY, and database if missing
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
