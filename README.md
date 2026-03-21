@@ -101,14 +101,21 @@ composer dev
 
 ### Docker Setup
 
+Buddy's Docker setup connects to your existing Qdrant instance running on the `qdrant-memory_default` network. No PHP 8.5 required on the host.
+
 ```bash
+# Build the image
+docker compose build
+
+# Start app + queue worker
 docker compose up -d
 ```
 
-This starts three services:
+This starts two services:
 - **app** — Laravel HTTP server on port 8000
 - **queue** — Background queue worker for async evaluations
-- **qdrant** — Qdrant vector database on port 6333
+
+Both connect to the existing Qdrant container (`qdrant-memory-db`) via the `qdrant-memory_default` Docker network.
 
 ## Configuration
 
@@ -253,30 +260,51 @@ Close a completed task and optionally store durable learnings in Qdrant.
 
 ## MCP Server
 
-Buddy exposes itself as an MCP server so external coding agents can use it as a tool.
-
-### Starting the MCP Server
-
-```bash
-php artisan buddy:mcp-server
-```
-
-This starts a stdio-based JSON-RPC 2.0 server that reads from stdin and writes to stdout.
+Buddy exposes itself as an MCP server so external coding agents can use it as a tool. The MCP server runs inside Docker — no PHP 8.5 installation required on the host.
 
 ### Connecting from Claude Code
 
-Add to your MCP configuration:
+Add to your Claude Code settings (`~/.claude/settings.json` or project-level `.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
     "buddy": {
-      "command": "php",
-      "args": ["artisan", "buddy:mcp-server"],
-      "cwd": "/path/to/buddy"
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "qdrant-memory_default",
+        "-e", "QDRANT_HOST=http://qdrant-memory-db",
+        "-e", "QDRANT_PORT=6333",
+        "-e", "OPENAI_API_KEY=your-key-here",
+        "-e", "APP_KEY=base64:your-app-key-here",
+        "-v", "buddy_db:/var/www/html/database",
+        "buddy-app",
+        "php", "artisan", "buddy:mcp-server"
+      ]
     }
   }
 }
+```
+
+**Prerequisites:** Build the image once with `docker compose build` from the Buddy directory.
+
+### Starting the MCP Server Directly
+
+```bash
+# Via Docker (recommended — no PHP 8.5 required)
+docker run --rm -i \
+  --network qdrant-memory_default \
+  -e QDRANT_HOST=http://qdrant-memory-db \
+  -e QDRANT_PORT=6333 \
+  -e OPENAI_API_KEY=sk-... \
+  -e APP_KEY=base64:... \
+  -v buddy_db:/var/www/html/database \
+  buddy-app \
+  php artisan buddy:mcp-server
+
+# Or natively (requires PHP 8.5)
+php artisan buddy:mcp-server
 ```
 
 ### Available MCP Tools

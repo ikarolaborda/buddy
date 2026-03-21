@@ -196,19 +196,32 @@ Buddy's evaluation response always has this shape:
 
 ## 6. MCP Tools Reference
 
-Buddy exposes 7 tools via MCP. Connect using stdio transport:
+Buddy exposes 7 tools via MCP. It runs inside Docker (no PHP 8.5 required on the host).
+
+Connect using stdio transport in Claude Code settings:
 
 ```json
 {
   "mcpServers": {
     "buddy": {
-      "command": "php",
-      "args": ["artisan", "buddy:mcp-server"],
-      "cwd": "/path/to/buddy"
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "qdrant-memory_default",
+        "-e", "QDRANT_HOST=http://qdrant-memory-db",
+        "-e", "QDRANT_PORT=6333",
+        "-e", "OPENAI_API_KEY=your-key-here",
+        "-e", "APP_KEY=base64:your-app-key-here",
+        "-v", "buddy_db:/var/www/html/database",
+        "buddy-app",
+        "php", "artisan", "buddy:mcp-server"
+      ]
     }
   }
 }
 ```
+
+**Prerequisite:** Build the image once: `docker compose build` from Buddy's directory.
 
 ### buddy.submit_problem
 

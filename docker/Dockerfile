@@ -26,8 +26,12 @@ RUN composer install --no-interaction --prefer-dist --optimize-autoloader --no-s
 COPY . .
 RUN composer dump-autoload --optimize
 
-RUN touch database/database.sqlite \
-    && php artisan migrate --force
+# Create database directory and copy entrypoint
+RUN mkdir -p database
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["entrypoint.sh"]
 
 EXPOSE 8000
 

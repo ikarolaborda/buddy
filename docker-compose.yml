@@ -3,52 +3,44 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+    image: buddy-app
     ports:
       - "8000:8000"
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
-    depends_on:
-      - qdrant
+      - buddy_db:/var/www/html/database
+    env_file: .env
     environment:
-      - APP_ENV=local
-      - DB_CONNECTION=sqlite
-      - QDRANT_HOST=http://qdrant
+      - QDRANT_HOST=http://qdrant-memory-db
       - QDRANT_PORT=6333
     networks:
-      - buddy
+      - qdrant-memory_default
+    command: >
+      sh -c "touch database/database.sqlite &&
+             php artisan migrate --force &&
+             php artisan serve --host=0.0.0.0"
 
   queue:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: php artisan queue:listen --tries=1 --timeout=180
+    image: buddy-app
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
-    depends_on:
-      - qdrant
+      - buddy_db:/var/www/html/database
+    env_file: .env
     environment:
-      - APP_ENV=local
-      - DB_CONNECTION=sqlite
-      - QDRANT_HOST=http://qdrant
+      - QDRANT_HOST=http://qdrant-memory-db
       - QDRANT_PORT=6333
     networks:
-      - buddy
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    networks:
-      - buddy
+      - qdrant-memory_default
+    command: php artisan queue:listen --tries=1 --timeout=180
 
 volumes:
-  qdrant_data:
+  buddy_db:
 
 networks:
-  buddy:
-    driver: bridge
+  qdrant-memory_default:
+    external: true
