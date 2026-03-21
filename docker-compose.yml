@@ -1,0 +1,54 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    depends_on:
+      - qdrant
+    environment:
+      - APP_ENV=local
+      - DB_CONNECTION=sqlite
+      - QDRANT_HOST=http://qdrant
+      - QDRANT_PORT=6333
+    networks:
+      - buddy
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: php artisan queue:listen --tries=1 --timeout=180
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    depends_on:
+      - qdrant
+    environment:
+      - APP_ENV=local
+      - DB_CONNECTION=sqlite
+      - QDRANT_HOST=http://qdrant
+      - QDRANT_PORT=6333
+    networks:
+      - buddy
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - buddy
+
+volumes:
+  qdrant_data:
+
+networks:
+  buddy:
+    driver: bridge
