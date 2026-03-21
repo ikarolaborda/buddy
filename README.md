@@ -1,6 +1,6 @@
 # Buddy
 
-[![Tests](https://github.com/iclaborda/buddy/actions/workflows/tests.yml/badge.svg)](https://github.com/iclaborda/buddy/actions/workflows/tests.yml)
+[![Tests](https://github.com/ikarolaborda/buddy/actions/workflows/tests.yml/badge.svg)](https://github.com/ikarolaborda/buddy/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An evaluator-optimizer sidecar agent for engineering workflows. Buddy helps primary coding agents when their work becomes slow, ambiguous, or repeatedly unsuccessful.
