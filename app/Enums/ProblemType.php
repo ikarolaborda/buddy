@@ -11,6 +11,7 @@ enum ProblemType: string
     case Integration = 'integration';
     case Configuration = 'configuration';
     case Security = 'security';
+    case PromptRefinement = 'prompt_refinement';
     case Ambiguous = 'ambiguous';
     case Other = 'other';
 }

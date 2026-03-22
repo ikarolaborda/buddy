@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Ai\Agents\EvaluatorOptimizerAgent;
+use App\Ai\Agents\PromptRefinementAgent;
 use App\DTOs\EvaluationResult;
 use App\DTOs\MemorySearchResult;
 use App\DTOs\ProblemPacket;
+use App\DTOs\RefinementResult;
 use App\Enums\RunStatus;
 use App\Enums\TaskStatus;
 use App\Models\BuddyDecisionLog;
@@ -91,6 +93,90 @@ class EvaluatorOptimizerService
                 $this->storeLearnings($task, $learningsSummary);
             }
         });
+    }
+
+    public function refine(BuddyTask $task): RefinementResult
+    {
+        if ($task->isTerminal()) {
+            throw new \RuntimeException("Task {$task->ulid} is already in terminal state: {$task->status->value}");
+        }
+
+        $task->update(['status' => TaskStatus::Evaluating]);
+
+        $run = $this->createRun($task);
+
+        try {
+            $memoryHits = $this->searchMemory($task);
+            $this->storeMemoryReferences($task, $memoryHits);
+
+            $result = $this->runRefinementAgent($task);
+
+            $this->storeRecommendation($run, $this->refinementToEvaluation($result));
+            $this->logDecision($task, $run, $this->refinementToEvaluation($result));
+
+            $run->update([
+                'status' => RunStatus::Completed,
+                'completed_at' => now(),
+            ]);
+
+            $task->update(['status' => TaskStatus::Completed]);
+
+            return $result;
+        } catch (\Throwable $e) {
+            Log::error('Refinement failed', [
+                'task_ulid' => $task->ulid,
+                'run_id' => $run->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $run->update([
+                'status' => RunStatus::Failed,
+                'completed_at' => now(),
+            ]);
+
+            $task->update(['status' => TaskStatus::Failed]);
+
+            throw $e;
+        }
+    }
+
+    protected function runRefinementAgent(BuddyTask $task): RefinementResult
+    {
+        $agent = new PromptRefinementAgent($task);
+        $prompt = $agent->buildPrompt();
+
+        $response = $agent->prompt($prompt);
+
+        return RefinementResult::fromArray([
+            'accepted' => $response['accepted'],
+            'confidence' => $response['confidence'],
+            'summary' => $response['summary'],
+            'normalized_task' => $response['normalized_task'],
+            'task_intent' => $response['task_intent'],
+            'final_execution_prompt' => $response['final_execution_prompt'],
+            'clarified_constraints' => $response['clarified_constraints'] ?? [],
+            'recommended_tool_sequence' => $response['recommended_tool_sequence'] ?? [],
+            'execution_checklist' => $response['execution_checklist'] ?? [],
+            'risks' => $response['risks'] ?? [],
+            'missing_information' => $response['missing_information'] ?? [],
+            'verification_plan' => $response['verification_plan'] ?? [],
+            'memory_hits' => $response['memory_hits'] ?? [],
+        ]);
+    }
+
+    protected function refinementToEvaluation(RefinementResult $result): EvaluationResult
+    {
+        return new EvaluationResult(
+            accepted: $result->accepted,
+            confidence: $result->confidence,
+            summary: $result->summary,
+            recommendedPlan: $result->executionChecklist,
+            rejectedReasons: [],
+            requiredFollowups: $result->missingInformation,
+            risks: $result->risks,
+            nextActions: $result->recommendedToolSequence,
+            memoryHits: $result->memoryHits,
+        );
     }
 
     protected function createRun(BuddyTask $task): BuddyRun

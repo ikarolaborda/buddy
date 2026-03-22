@@ -7,6 +7,7 @@ use App\Mcp\Tools\AttachArtifactMcpTool;
 use App\Mcp\Tools\CloseTaskMcpTool;
 use App\Mcp\Tools\GetRecommendationTool;
 use App\Mcp\Tools\GetTaskStatusTool;
+use App\Mcp\Tools\RefinePromptTool;
 use App\Mcp\Tools\SearchMemoryMcpTool;
 use App\Mcp\Tools\StoreMemoryMcpTool;
 use App\Mcp\Tools\SubmitProblemTool;
@@ -70,6 +71,7 @@ class McpServerCommand extends Command
         $registry->register(new SearchMemoryMcpTool);
         $registry->register(new StoreMemoryMcpTool);
         $registry->register(new AttachArtifactMcpTool);
+        $registry->register(new RefinePromptTool);
         $registry->register(new CloseTaskMcpTool);
 
         return $registry;

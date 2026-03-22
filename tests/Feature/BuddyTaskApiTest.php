@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\EvaluatorOptimizerAgent;
+use App\Ai\Agents\PromptRefinementAgent;
 use App\Models\BuddyTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -206,5 +207,93 @@ class BuddyTaskApiTest extends TestCase
 
         $this->assertNotNull($task);
         $this->assertEquals(1, $task->artifacts()->count());
+    }
+
+    public function test_can_refine_prompt_with_faked_agent(): void
+    {
+        PromptRefinementAgent::fake([
+            [
+                'accepted' => true,
+                'confidence' => 'high',
+                'summary' => 'Refined a vague refactoring request into a structured execution brief.',
+                'normalized_task' => 'Refactor the UserService to extract email validation into a dedicated FormRequest.',
+                'task_intent' => 'refactor',
+                'final_execution_prompt' => "## Objective\nRefactor UserService email validation.\n\n## Steps\n1. Create UpdateProfileRequest FormRequest\n2. Move validation rules from service to request\n3. Update controller to use form request\n4. Update tests\n\n## Verification\n- All existing tests pass\n- New form request test covers email validation",
+                'clarified_constraints' => ['Preserve backward compatibility', 'No schema changes'],
+                'recommended_tool_sequence' => ['Read UserService', 'Create FormRequest', 'Update controller', 'Run tests'],
+                'execution_checklist' => ['Create UpdateProfileRequest', 'Move rules', 'Inject in controller', 'Add test', 'Run suite'],
+                'risks' => ['Other services may depend on UserService validation directly'],
+                'missing_information' => [],
+                'verification_plan' => ['Run php artisan test', 'Verify POST /api/users still validates email'],
+                'memory_hits' => [],
+            ],
+        ]);
+
+        $task = BuddyTask::factory()->create([
+            'task_summary' => 'help me refactor the user service validation',
+            'problem_type' => 'prompt_refinement',
+        ]);
+
+        $response = $this->postJson("/api/buddy/tasks/{$task->ulid}/refine");
+
+        $response->assertOk()
+            ->assertJsonPath('refinement.accepted', true)
+            ->assertJsonPath('refinement.confidence', 'high')
+            ->assertJsonPath('refinement.task_intent', 'refactor')
+            ->assertJsonStructure([
+                'refinement' => [
+                    'accepted',
+                    'confidence',
+                    'summary',
+                    'normalized_task',
+                    'task_intent',
+                    'final_execution_prompt',
+                    'clarified_constraints',
+                    'recommended_tool_sequence',
+                    'execution_checklist',
+                    'risks',
+                    'missing_information',
+                    'verification_plan',
+                    'memory_hits',
+                ],
+            ]);
+
+        $this->assertDatabaseHas('buddy_tasks', [
+            'id' => $task->id,
+            'status' => 'completed',
+        ]);
+
+        $this->assertDatabaseHas('buddy_runs', [
+            'buddy_task_id' => $task->id,
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_cannot_refine_closed_task(): void
+    {
+        $task = BuddyTask::factory()->closed()->create();
+
+        $response = $this->postJson("/api/buddy/tasks/{$task->ulid}/refine");
+
+        $response->assertStatus(422);
+    }
+
+    public function test_can_create_prompt_refinement_task(): void
+    {
+        $response = $this->postJson('/api/buddy/tasks', [
+            'source_agent' => 'claude-code',
+            'task_summary' => 'make this production ready',
+            'problem_type' => 'prompt_refinement',
+            'repo' => 'acme/api',
+            'constraints' => ['no new dependencies'],
+            'evidence' => [
+                ['type' => 'context', 'content' => 'Stack: Laravel 13, PHP 8.5, SQLite dev / PG prod'],
+            ],
+            'requested_outcome' => 'Return a professional execution prompt with steps, risks, and verification plan',
+        ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.problem_type', 'prompt_refinement')
+            ->assertJsonPath('data.status', 'pending');
     }
 }

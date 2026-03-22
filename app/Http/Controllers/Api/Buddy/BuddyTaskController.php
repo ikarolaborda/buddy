@@ -116,6 +116,32 @@ class BuddyTaskController extends Controller
         }
     }
 
+    public function refine(BuddyTask $task): JsonResponse
+    {
+        if ($task->isTerminal()) {
+            return response()->json([
+                'error' => 'Cannot refine a task in terminal state.',
+            ], 422);
+        }
+
+        try {
+            $result = $this->evaluator->refine($task);
+
+            $task->refresh();
+            $task->loadCount(['runs', 'artifacts']);
+
+            return response()->json([
+                'task' => new BuddyTaskResource($task),
+                'refinement' => $result->toArray(),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => 'Refinement failed.',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function close(CloseTaskRequest $request, BuddyTask $task): JsonResponse
     {
         if ($task->status->isTerminal() && $task->status !== TaskStatus::Completed) {
