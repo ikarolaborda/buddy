@@ -45,8 +45,6 @@ class EvaluateTaskJob implements ShouldQueue
                 'task_ulid' => $this->task->ulid,
                 'error' => $e->getMessage(),
             ]);
-
-            // Task status is already set to 'failed' by the service
         }
     }
 

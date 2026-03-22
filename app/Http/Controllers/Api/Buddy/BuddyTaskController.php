@@ -28,7 +28,6 @@ class BuddyTaskController extends Controller
         $packet = ProblemPacket::fromArray($request->validated());
         $task = $this->evaluator->createTask($packet);
 
-        // Store any inline artifacts
         foreach ($request->input('artifacts', []) as $artifact) {
             $task->artifacts()->create([
                 'type' => $artifact['type'],
@@ -77,7 +76,6 @@ class BuddyTaskController extends Controller
             ], 422);
         }
 
-        // Async mode: dispatch to queue and return immediately
         if ($request->boolean('async')) {
             if (config('queue.default') === 'sync') {
                 return response()->json([
@@ -96,7 +94,6 @@ class BuddyTaskController extends Controller
             ], 202);
         }
 
-        // Synchronous mode
         try {
             $result = $this->evaluator->evaluate($task);
 

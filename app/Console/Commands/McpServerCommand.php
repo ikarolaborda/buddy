@@ -25,7 +25,6 @@ class McpServerCommand extends Command
     {
         $this->registry = $this->buildRegistry();
 
-        // Disable output buffering for stdio
         if (ob_get_level()) {
             ob_end_flush();
         }

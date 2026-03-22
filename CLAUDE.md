@@ -71,6 +71,18 @@ When configuring Buddy as an MCP server in Claude Code settings:
 }
 ```
 
+## Commenting Rules
+
+Default to no comments. Code should read like it was written by a careful senior engineer.
+
+**Forbidden:** Line comments that narrate code (`// Set the user id`, `// Return the response`, `// Loop through items`). These are AI-comment noise and a quality smell.
+
+**Allowed only when:** The code alone cannot communicate the reasoning — business rules, non-obvious constraints, compatibility quirks, security decisions, surprising edge cases, intentional deviations.
+
+**Style:** Prefer one concise block comment above a section over scattered inline comments. Explain **why**, not **what**. No docblocks unless required by tooling.
+
+**Review check:** Before committing, ask: can this comment be eliminated by renaming or restructuring? Does it explain why, not what? Would a strong human reviewer keep it?
+
 ## Git
 
 - Author: configured per-repo (not global)
