@@ -33,19 +33,29 @@ class QdrantMemoryService
             $body['filter'] = $this->buildFilter($filters);
         }
 
-        $response = $this->client()
-            ->post("/collections/{$this->collection()}/points/search", $body);
+        // Laravel Http + Guzzle stalls for long stretches when the sync
+        // evaluate endpoint reaches Qdrant under `php artisan serve` —
+        // even though the same call from `tinker` returns in ~50ms. Bypass
+        // Guzzle entirely and use libcurl directly so evaluation never
+        // waits longer than the configured connect+exec budget.
+        [$status, $raw] = $this->rawPost(
+            "/collections/{$this->collection()}/points/search",
+            $body,
+            connectTimeout: 5,
+            timeout: 15,
+        );
 
-        if (! $response->successful()) {
+        if ($status !== 200 || $raw === null) {
             Log::warning('Qdrant search failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
+                'status' => $status,
+                'body' => $raw,
             ]);
 
             return [];
         }
 
-        $results = $response->json('result', []);
+        $decoded = json_decode($raw, true);
+        $results = is_array($decoded) ? ($decoded['result'] ?? []) : [];
 
         return array_map(
             fn (array $r) => MemorySearchResult::fromQdrantResult($r),
@@ -137,10 +147,24 @@ class QdrantMemoryService
         $port = config('buddy.qdrant.port', 6333);
         $apiKey = config('buddy.qdrant.api_key');
 
+        // Force a fresh cURL handle per request and resolve against IPv4
+        // only. queue:listen forks workers from a parent that may have
+        // cached a negative DNS result from boot time; reused connections
+        // then stall for the full Guzzle timeout. Fresh + forbid-reuse
+        // eliminates the cached-handle trap.
         $client = Http::baseUrl("{$host}:{$port}")
             ->acceptJson()
             ->asJson()
-            ->timeout(30);
+            ->connectTimeout(5)
+            ->timeout(30)
+            ->withOptions([
+                'version' => 1.1,
+                'curl' => [
+                    CURLOPT_FRESH_CONNECT => true,
+                    CURLOPT_FORBID_REUSE => true,
+                    CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+                ],
+            ]);
 
         if ($apiKey) {
             $client->withHeader('api-key', $apiKey);
@@ -152,6 +176,63 @@ class QdrantMemoryService
     protected function collection(): string
     {
         return config('buddy.qdrant.collection', 'buddy_episodes');
+    }
+
+    /**
+     * Direct libcurl POST — avoids Guzzle handler caching that causes
+     * sporadic connection stalls under `php artisan serve`.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{0: int, 1: string|null}
+     */
+    protected function rawPost(
+        string $path,
+        array $body,
+        int $connectTimeout = 5,
+        int $timeout = 15,
+    ): array {
+        $host = rtrim(config('buddy.qdrant.host', 'http://localhost'), '/');
+        $port = (int) config('buddy.qdrant.port', 6333);
+        $apiKey = config('buddy.qdrant.api_key');
+        $url = $host.':'.$port.$path;
+
+        $headers = ['Accept: application/json', 'Content-Type: application/json'];
+        if ($apiKey) {
+            $headers[] = 'api-key: '.$apiKey;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($body),
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_FRESH_CONNECT => true,
+            CURLOPT_FORBID_REUSE => true,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        ]);
+
+        $body = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $errMsg = $errno !== 0 ? curl_error($ch) : null;
+        curl_close($ch);
+
+        if ($errno !== 0) {
+            Log::warning('Qdrant raw post failed', [
+                'url' => $url,
+                'errno' => $errno,
+                'error' => $errMsg,
+            ]);
+
+            return [0, null];
+        }
+
+        return [$status, is_string($body) ? $body : null];
     }
 
     /**
