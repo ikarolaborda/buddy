@@ -1,7 +1,14 @@
 # LangChain / LangSmith Integration Plan for Buddy
 
-**Status:** Proposed — phase 1 env plumbing already live in dev
+**Status:** Complete (L1 + L2 shipped and live-verified; L3 intentionally not started per §2)
 **Date:** 2026-07-22
+
+Delivery notes: L1 tracing live since `78a5cb9` (deployed trace `73c53778`). L2 datasets
+live since `4c8e270` (dataset `601f88a6`); replay engine + human promotion gate close the
+loop — first real replay caught a genuine regression (stricter-evidence candidate dropped
+golden accuracy 1.0 → 0.5, experiment `15693111…`) and a live provider incompatibility
+(gpt-5.4 rejects the `temperature` parameter; attributes removed). Promotion decisions go
+through `buddy:cil-decide` and are attributable by name.
 **Prerequisites:** `LANGSMITH_API_KEY` in Key Vault (`langsmith-api-key`) and wired into
 `ca-buddy-api-dev` / `ca-buddy-worker-dev` alongside `LANGSMITH_ENDPOINT`,
 `LANGSMITH_PROJECT`, `LANGSMITH_TRACING` (done; also in Bicep so IaC runs preserve it).

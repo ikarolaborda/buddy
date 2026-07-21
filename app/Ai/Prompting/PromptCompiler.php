@@ -20,7 +20,13 @@ class PromptCompiler
         protected PromptModuleRouter $router,
     ) {}
 
-    public function compile(string $agentKey, ?BuddyTask $task = null): PromptBundle
+    /**
+     * @param  array<string, string>  $overrides  candidate module text keyed by
+     *                                            module ID — used by the CIL
+     *                                            replay engine, never by live
+     *                                            traffic
+     */
+    public function compile(string $agentKey, ?BuddyTask $task = null, array $overrides = []): PromptBundle
     {
         $moduleIds = self::CORE_MODULES;
 
@@ -34,8 +40,11 @@ class PromptCompiler
         $texts = [];
 
         foreach ($moduleIds as $moduleId) {
-            $texts[] = $this->registry->module($moduleId);
-            $moduleHashes[$moduleId] = $this->registry->hash($moduleId);
+            $text = $overrides[$moduleId] ?? $this->registry->module($moduleId);
+            $texts[] = $text;
+            $moduleHashes[$moduleId] = isset($overrides[$moduleId])
+                ? hash('sha256', $text)
+                : $this->registry->hash($moduleId);
         }
 
         $text = implode("\n\n---\n\n", $texts);

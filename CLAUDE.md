@@ -23,6 +23,9 @@ Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints
 - `php artisan buddy:client:create <name>` — Create an API client and issue a key
 - `php artisan buddy:outbox-relay --once` — Republish unprocessed outbox messages
 - `php artisan buddy:cil-report` — Report-only Controlled Improvement Loop metrics
+- `php artisan buddy:cil-sync-suites` — Sync CIL suites to LangSmith datasets
+- `php artisan buddy:cil-replay <candidate> <suite>` — Replay baseline vs candidate prompts
+- `php artisan buddy:cil-decide <candidate>` — Record a human promotion decision
 - `php artisan migrate:fresh` — Reset database
 - `docker compose build` — Build Docker image
 - `docker compose up -d` — Start app + queue worker + redis

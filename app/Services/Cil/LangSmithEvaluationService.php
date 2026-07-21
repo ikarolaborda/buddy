@@ -169,6 +169,59 @@ class LangSmithEvaluationService
         }
     }
 
+    /**
+     * @return array<int, string> example IDs keyed by case_index metadata
+     */
+    public function exampleIds(string $datasetId): array
+    {
+        try {
+            $response = $this->client()->get('/examples', ['dataset' => $datasetId]);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $ids = [];
+
+            foreach ($response->json() ?? [] as $example) {
+                $index = $example['metadata']['case_index'] ?? null;
+
+                if ($index !== null) {
+                    $ids[(int) $index] = (string) $example['id'];
+                }
+            }
+
+            return $ids;
+        } catch (\Throwable $e) {
+            Log::warning('LangSmith example fetch failed', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $runs
+     */
+    public function postExperimentRuns(array $runs): void
+    {
+        if (! $this->enabled() || $runs === []) {
+            return;
+        }
+
+        try {
+            $response = $this->client()->post('/runs/batch', ['post' => $runs]);
+
+            if (! $response->successful()) {
+                Log::warning('LangSmith experiment run post rejected', [
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 300),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('LangSmith experiment run post failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     protected function client(): PendingRequest
     {
         return Http::baseUrl((string) config('buddy.langsmith.endpoint'))

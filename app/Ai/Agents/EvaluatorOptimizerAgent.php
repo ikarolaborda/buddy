@@ -10,7 +10,6 @@ use App\Ai\Tools\SearchMemoryTool;
 use App\Models\BuddyTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxSteps;
-use Laravel\Ai\Attributes\Temperature;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Contracts\HasTools;
@@ -18,7 +17,6 @@ use Laravel\Ai\Promptable;
 use Stringable;
 
 #[MaxSteps(10)]
-#[Temperature(0.2)]
 class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
 {
     use Promptable;
@@ -40,6 +38,13 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
     {
         return $this->bundle ??= app(PromptCompiler::class)
             ->compile(self::AGENT_KEY, $this->task);
+    }
+
+    public function withBundle(PromptBundle $bundle): self
+    {
+        $this->bundle = $bundle;
+
+        return $this;
     }
 
     public function provider(): string
