@@ -271,9 +271,59 @@ Close a completed task and optionally store durable learnings in Qdrant.
 }
 ```
 
-## MCP Server
+## Using the Deployed Buddy from Other Projects (MCP Bridge)
 
-Buddy exposes itself as an MCP server so external coding agents can use it as a tool. The MCP server runs inside Docker — no PHP 8.5 installation required on the host.
+Any project can talk to a deployed Buddy through the thin stdio bridge
+`bin/buddy-mcp-bridge`. The bridge holds no application secrets — only the API
+base URL and a per-project API key — and forwards MCP tool calls to Buddy's
+authenticated REST API.
+
+### 1. Issue an API key for the project
+
+Each connecting project/agent gets its own client and key, so usage is
+auditable and keys are individually revocable. With an admin-scoped key
+(minted once via `php artisan buddy:client:create <name> --scopes=admin`):
+
+```bash
+BUDDY_BASE_URL=https://<your-buddy-host> \
+BUDDY_ADMIN_KEY=bdy_live_... \
+  bin/buddy-issue-key my-new-agent
+```
+
+This calls `POST /api/admin/clients` and prints the new `bdy_live_...` key
+once. Default scopes are `tasks:read,tasks:write`; the endpoint refuses to
+mint admin-scoped keys (CLI only, so a leaked admin key cannot breed more).
+
+### 2. Point the project's Claude Code config at the bridge
+
+In `~/.claude.json` under the project's `mcpServers` (or in project-level
+`.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "buddy": {
+      "type": "stdio",
+      "command": "/path/to/buddy/bin/buddy-mcp-bridge",
+      "env": {
+        "BUDDY_BASE_URL": "https://<your-buddy-host>",
+        "BUDDY_API_KEY": "bdy_live_..."
+      }
+    }
+  }
+}
+```
+
+Restart the session; the bridge exposes `buddy.submit_problem`,
+`buddy.evaluate_task` (async — poll with `buddy.get_task_status`),
+`buddy.refine_prompt`, `buddy.attach_artifact`, and `buddy.close_task`.
+
+Task access is isolated per client: a key can only see and mutate tasks its
+own client created (admin-scoped keys bypass; a non-owner receives 404).
+
+## MCP Server (local, full stack)
+
+Buddy also exposes itself as a local MCP server so external coding agents can use it as a tool. The MCP server runs inside Docker — no PHP 8.5 installation required on the host.
 
 ### Connecting from Claude Code
 

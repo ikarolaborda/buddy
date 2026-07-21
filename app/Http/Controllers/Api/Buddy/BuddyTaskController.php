@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Buddy;
 
 use App\DTOs\ProblemPacket;
+use App\Enums\ApiScope;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Buddy\AttachArtifactRequest;
@@ -90,16 +91,45 @@ class BuddyTaskController extends Controller
         return $response;
     }
 
-    public function show(BuddyTask $task): BuddyTaskResource
+    public function show(Request $request, BuddyTask $task): BuddyTaskResource
     {
+        $this->authorizeClientAccess($request, $task);
+
         $task->loadCount(['runs', 'artifacts']);
         $task->load('recommendations');
 
         return new BuddyTaskResource($task);
     }
 
+    /*
+     * Cross-client isolation (plan §13: zero cross-client data exposure).
+     * A non-owner gets 404, not 403, so task existence does not leak.
+     * Tasks without an owning client (created while auth was disabled)
+     * remain accessible; admin-scoped keys bypass.
+     */
+    protected function authorizeClientAccess(Request $request, BuddyTask $task): void
+    {
+        if (! config('buddy.api.auth_required') || $task->api_client_id === null) {
+            return;
+        }
+
+        $key = $request->attributes->get('api_key');
+
+        if ($key !== null && $key->hasScope(ApiScope::Admin)) {
+            return;
+        }
+
+        $client = $request->attributes->get('api_client');
+
+        if ($client === null || $client->id !== $task->api_client_id) {
+            abort(404);
+        }
+    }
+
     public function attachArtifact(AttachArtifactRequest $request, BuddyTask $task): JsonResponse
     {
+        $this->authorizeClientAccess($request, $task);
+
         if ($task->isTerminal()) {
             return response()->json([
                 'error' => 'Cannot attach artifacts to a task in terminal state.',
@@ -117,6 +147,8 @@ class BuddyTaskController extends Controller
 
     public function evaluate(Request $request, BuddyTask $task): JsonResponse
     {
+        $this->authorizeClientAccess($request, $task);
+
         if ($task->isTerminal()) {
             return response()->json([
                 'error' => 'Cannot evaluate a task in terminal state.',
@@ -168,8 +200,10 @@ class BuddyTaskController extends Controller
         }
     }
 
-    public function refine(BuddyTask $task): JsonResponse
+    public function refine(Request $request, BuddyTask $task): JsonResponse
     {
+        $this->authorizeClientAccess($request, $task);
+
         if ($task->isTerminal()) {
             return response()->json([
                 'error' => 'Cannot refine a task in terminal state.',
@@ -200,6 +234,8 @@ class BuddyTaskController extends Controller
 
     public function close(CloseTaskRequest $request, BuddyTask $task): JsonResponse
     {
+        $this->authorizeClientAccess($request, $task);
+
         if ($task->status->isTerminal() && $task->status !== TaskStatus::Completed) {
             return response()->json([
                 'error' => 'Cannot close a task that is already in a terminal state.',

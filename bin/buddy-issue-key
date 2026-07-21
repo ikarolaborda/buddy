@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Issue a Buddy API key for a new project/agent.
+#
+# Usage:
+#   BUDDY_BASE_URL=https://... BUDDY_ADMIN_KEY=bdy_live_... \
+#     bin/buddy-issue-key <client-name> [scope,scope]
+#
+# Default scopes: tasks:read,tasks:write. The returned key is shown once.
+set -euo pipefail
+
+NAME="${1:?usage: buddy-issue-key <client-name> [scopes]}"
+SCOPES="${2:-tasks:read,tasks:write}"
+: "${BUDDY_BASE_URL:?BUDDY_BASE_URL is required}"
+: "${BUDDY_ADMIN_KEY:?BUDDY_ADMIN_KEY is required}"
+
+SCOPES_JSON=$(printf '%s' "$SCOPES" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().split(",")))')
+
+curl -sf -X POST "$BUDDY_BASE_URL/api/admin/clients" \
+  -H "Authorization: Bearer $BUDDY_ADMIN_KEY" \
+  -H 'Content-Type: application/json' \
+  -d "{\"name\": \"$NAME\", \"scopes\": $SCOPES_JSON}" | python3 -m json.tool

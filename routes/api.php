@@ -1,11 +1,16 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\ApiClientController;
 use App\Http\Controllers\Api\Buddy\BuddyTaskController;
 use App\Http\Controllers\Api\HealthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('health', [HealthController::class, 'health'])->name('health');
 Route::get('ready', [HealthController::class, 'ready'])->name('ready');
+
+Route::post('admin/clients', [ApiClientController::class, 'store'])
+    ->middleware('auth.buddy:admin')
+    ->name('admin.clients.store');
 
 Route::prefix('buddy')->group(function () {
     Route::post('tasks', [BuddyTaskController::class, 'store'])
