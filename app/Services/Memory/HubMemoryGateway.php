@@ -36,7 +36,7 @@ class HubMemoryGateway implements MemoryGateway
             if (! $response->successful()) {
                 return MemorySearchPage::degraded(
                     MemoryBackend::Hub->value,
-                    "hub search returned {$response->status()}",
+                    "hub search returned {$response->status()}: ".substr($response->body(), 0, 200),
                 );
             }
 

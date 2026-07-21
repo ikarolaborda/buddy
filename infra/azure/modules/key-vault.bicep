@@ -14,8 +14,13 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableSoftDelete: true
     softDeleteRetentionInDays: 30
     enablePurgeProtection: true
+    // Container Apps resolves Key Vault secret references from its control
+    // plane, which is neither VNet-scoped nor on the trusted-services list.
+    // Dev therefore stays network-open with RBAC as the guard; prod locks
+    // the network and must use private endpoints + a supported reference
+    // path before workloads deploy there.
     networkAcls: {
-      defaultAction: 'Deny'
+      defaultAction: environment == 'prod' ? 'Deny' : 'Allow'
       bypass: 'AzureServices'
     }
   }

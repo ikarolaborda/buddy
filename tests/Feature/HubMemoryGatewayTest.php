@@ -121,7 +121,7 @@ class HubMemoryGatewayTest extends TestCase
         $page = $this->gateway->search(new MemoryQuery('anything'));
 
         $this->assertTrue($page->degraded);
-        $this->assertSame('hub search returned 500', $page->degradedReason);
+        $this->assertStringStartsWith('hub search returned 500', $page->degradedReason);
     }
 
     public function test_health_hits_healthz(): void

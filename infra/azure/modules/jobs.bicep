@@ -7,9 +7,11 @@ param location string
 param containerAppsEnvironmentId string
 param acrLoginServer string
 param imageTag string
-param keyVaultName string
+param keyVaultUri string
 param postgresFqdn string
 param redisHostName string
+param redisPort string = '10000'
+param redisUseTls bool = true
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'id-buddy-jobs-${environment}'
@@ -18,12 +20,20 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 
 var commonEnv = [
   { name: 'APP_ENV', value: 'production' }
+  { name: 'APP_KEY', secretRef: 'app-key' }
+  { name: 'LOG_CHANNEL', value: 'stderr' }
   { name: 'DB_CONNECTION', value: 'pgsql' }
   { name: 'DB_HOST', value: postgresFqdn }
+  { name: 'DB_PORT', value: '5432' }
   { name: 'DB_DATABASE', value: 'buddy' }
+  { name: 'DB_USERNAME', value: 'buddy_admin' }
+  { name: 'DB_PASSWORD', secretRef: 'db-password' }
   { name: 'QUEUE_CONNECTION', value: 'redis' }
-  { name: 'REDIS_HOST', value: redisHostName }
-  { name: 'KEY_VAULT_NAME', value: keyVaultName }
+  { name: 'REDIS_CLIENT', value: 'phpredis' }
+  { name: 'REDIS_HOST', value: redisUseTls ? 'tls://${redisHostName}' : redisHostName }
+  { name: 'REDIS_PORT', value: redisPort }
+  { name: 'REDIS_PASSWORD', secretRef: 'redis-password' }
+  { name: 'BUDDY_API_KEY_PEPPER', secretRef: 'api-pepper' }
 ]
 
 resource migrationJob 'Microsoft.App/jobs@2024-03-01' = {
@@ -48,6 +58,28 @@ resource migrationJob 'Microsoft.App/jobs@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
+          identity: identity.id
+        }
+      ]
+      secrets: [
+        {
+          name: 'app-key'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-app-key'
+          identity: identity.id
+        }
+        {
+          name: 'db-password'
+          keyVaultUrl: '${keyVaultUri}secrets/pg-admin-password'
+          identity: identity.id
+        }
+        {
+          name: 'api-pepper'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-api-pepper'
+          identity: identity.id
+        }
+        {
+          name: 'redis-password'
+          keyVaultUrl: '${keyVaultUri}secrets/redis-access-key'
           identity: identity.id
         }
       ]
@@ -92,6 +124,28 @@ resource outboxRepairJob 'Microsoft.App/jobs@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
+          identity: identity.id
+        }
+      ]
+      secrets: [
+        {
+          name: 'app-key'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-app-key'
+          identity: identity.id
+        }
+        {
+          name: 'db-password'
+          keyVaultUrl: '${keyVaultUri}secrets/pg-admin-password'
+          identity: identity.id
+        }
+        {
+          name: 'api-pepper'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-api-pepper'
+          identity: identity.id
+        }
+        {
+          name: 'redis-password'
+          keyVaultUrl: '${keyVaultUri}secrets/redis-access-key'
           identity: identity.id
         }
       ]

@@ -7,10 +7,10 @@ param delegatedSubnetId string
 param privateDnsZoneId string
 
 @secure()
-param administratorPassword string = newGuid()
+param administratorPassword string
 
 resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2023-12-01-preview' = {
-  name: 'psql-buddy-${environment}'
+  name: 'psql-buddy-${environment}-${uniqueString(resourceGroup().id)}'
   location: location
   sku: {
     name: environment == 'prod' ? 'Standard_D2ds_v5' : 'Standard_B2s'

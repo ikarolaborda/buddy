@@ -7,9 +7,11 @@ param location string
 param containerAppsEnvironmentId string
 param acrLoginServer string
 param imageTag string
-param keyVaultName string
+param keyVaultUri string
 param postgresFqdn string
 param redisHostName string
+param redisPort string = '10000'
+param redisUseTls bool = true
 param memoryHubInternalUrl string
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
@@ -35,10 +37,32 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
       ]
+      secrets: [
+        {
+          name: 'app-key'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-app-key'
+          identity: identity.id
+        }
+        {
+          name: 'db-password'
+          keyVaultUrl: '${keyVaultUri}secrets/pg-admin-password'
+          identity: identity.id
+        }
+        {
+          name: 'api-pepper'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-api-pepper'
+          identity: identity.id
+        }
+        {
+          name: 'redis-password'
+          keyVaultUrl: '${keyVaultUri}secrets/redis-access-key'
+          identity: identity.id
+        }
+      ]
     }
     template: {
       scale: {
-        minReplicas: environment == 'prod' ? 1 : 0
+        minReplicas: 1
         maxReplicas: 4
         rules: [
           {
@@ -46,11 +70,17 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             custom: {
               type: 'redis'
               metadata: {
-                address: '${redisHostName}:10000'
+                address: '${redisHostName}:${redisPort}'
                 listName: 'buddy:queue:default'
                 listLength: '10'
-                enableTLS: 'true'
+                enableTLS: redisUseTls ? 'true' : 'false'
               }
+              auth: [
+                {
+                  secretRef: 'redis-password'
+                  triggerParameter: 'password'
+                }
+              ]
             }
           }
         ]
@@ -72,13 +102,21 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'DB_DATABASE', value: 'buddy' }
             { name: 'QUEUE_CONNECTION', value: 'redis' }
             { name: 'CACHE_STORE', value: 'redis' }
-            { name: 'REDIS_HOST', value: redisHostName }
+            { name: 'REDIS_HOST', value: redisUseTls ? 'tls://${redisHostName}' : redisHostName }
             { name: 'REDIS_CLIENT', value: 'phpredis' }
+            { name: 'APP_KEY', secretRef: 'app-key' }
+            { name: 'APP_DEBUG', value: 'false' }
+            { name: 'LOG_CHANNEL', value: 'stderr' }
+            { name: 'DB_PORT', value: '5432' }
+            { name: 'DB_USERNAME', value: 'buddy_admin' }
+            { name: 'DB_PASSWORD', secretRef: 'db-password' }
+            { name: 'REDIS_PORT', value: redisPort }
+            { name: 'REDIS_PASSWORD', secretRef: 'redis-password' }
+            { name: 'BUDDY_API_KEY_PEPPER', secretRef: 'api-pepper' }
             { name: 'REDIS_QUEUE_RETRY_AFTER', value: '240' }
             { name: 'BUDDY_MEMORY_BACKEND', value: 'hub' }
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
-            { name: 'KEY_VAULT_NAME', value: keyVaultName }
-          ]
+                      ]
         }
       ]
     }

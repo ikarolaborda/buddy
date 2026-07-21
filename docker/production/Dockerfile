@@ -19,9 +19,10 @@ RUN composer install \
 FROM php:8.5-fpm-alpine AS app
 
 RUN apk add --no-cache nginx supervisor libpq-dev $PHPIZE_DEPS \
-    && docker-php-ext-install pdo_pgsql opcache pcntl \
+    && docker-php-ext-install pdo_pgsql pcntl \
     && pecl install redis \
     && docker-php-ext-enable redis \
+    && (docker-php-ext-enable opcache || true) \
     && apk del $PHPIZE_DEPS
 
 WORKDIR /var/www/html
@@ -29,11 +30,18 @@ WORKDIR /var/www/html
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
 
+COPY --from=vendor /usr/bin/composer /usr/bin/composer
+
+# Stale host caches must never ship: packages.php from a dev machine lists
+# dev-only providers (Pail) absent from the no-dev vendor tree. Config is
+# cached at container start, not build time — build-time caching would
+# freeze empty env values into the image.
 RUN cp docker/production/php.ini "$PHP_INI_DIR/conf.d/99-buddy.ini" \
     && cp docker/production/nginx.conf /etc/nginx/http.d/default.conf \
     && cp docker/production/supervisord.conf /etc/supervisord.conf \
-    && composer dump-autoload --optimize --classmap-authoritative 2>/dev/null || php -r "exit(0);" \
-    && php artisan config:cache --no-ansi 2>/dev/null || true \
+    && rm -f bootstrap/cache/*.php \
+    && composer dump-autoload --optimize --classmap-authoritative \
+    && php artisan package:discover --ansi \
     && chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 8080

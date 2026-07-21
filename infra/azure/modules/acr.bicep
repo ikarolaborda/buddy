@@ -2,21 +2,13 @@ param environment string
 param location string
 
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: 'acrbuddy${environment}'
+  name: 'acrbuddy${environment}${uniqueString(resourceGroup().id)}'
   location: location
   sku: {
-    name: 'Standard'
+    name: 'Basic'
   }
   properties: {
     adminUserEnabled: false
-    policies: {
-      // Images are deployed by immutable commit-SHA tags; retention keeps
-      // the registry bounded without breaking rollback windows.
-      retentionPolicy: {
-        status: 'enabled'
-        days: 90
-      }
-    }
   }
 }
 

@@ -1,0 +1,17 @@
+.git
+.agent
+.serena
+.env
+.env.*
+!.env.example
+database/*.sqlite
+node_modules
+vendor
+storage/logs/*
+tests
+docs
+infra
+bootstrap/cache/*.php
+storage/framework/cache/*
+storage/framework/views/*
+storage/framework/sessions/*
