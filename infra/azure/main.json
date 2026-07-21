@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.45.15.27210",
-      "templateHash": "4983064616796371236"
+      "templateHash": "11990934179158034868"
     }
   },
   "parameters": {
@@ -1205,7 +1205,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "18075405471293100788"
+              "templateHash": "15211100634936165962"
             }
           },
           "parameters": {
@@ -1296,6 +1296,11 @@
                     {
                       "name": "redis-password",
                       "keyVaultUrl": "[format('{0}secrets/redis-access-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "langsmith-api-key",
+                      "keyVaultUrl": "[format('{0}secrets/langsmith-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
                     }
                   ]
@@ -1391,6 +1396,22 @@
                         {
                           "name": "BUDDY_API_KEY_PEPPER",
                           "secretRef": "api-pepper"
+                        },
+                        {
+                          "name": "LANGSMITH_API_KEY",
+                          "secretRef": "langsmith-api-key"
+                        },
+                        {
+                          "name": "LANGSMITH_ENDPOINT",
+                          "value": "https://api.smith.langchain.com"
+                        },
+                        {
+                          "name": "LANGSMITH_PROJECT",
+                          "value": "[format('buddy-{0}', parameters('environment'))]"
+                        },
+                        {
+                          "name": "LANGSMITH_TRACING",
+                          "value": "true"
                         },
                         {
                           "name": "BUDDY_MEMORY_BACKEND",
@@ -1503,7 +1524,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "11189823449392061186"
+              "templateHash": "7615599581464058100"
             }
           },
           "parameters": {
@@ -1589,6 +1610,11 @@
                     {
                       "name": "redis-password",
                       "keyVaultUrl": "[format('{0}secrets/redis-access-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "langsmith-api-key",
+                      "keyVaultUrl": "[format('{0}secrets/langsmith-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
                     }
                   ]
@@ -1707,6 +1733,22 @@
                         {
                           "name": "BUDDY_API_KEY_PEPPER",
                           "secretRef": "api-pepper"
+                        },
+                        {
+                          "name": "LANGSMITH_API_KEY",
+                          "secretRef": "langsmith-api-key"
+                        },
+                        {
+                          "name": "LANGSMITH_ENDPOINT",
+                          "value": "https://api.smith.langchain.com"
+                        },
+                        {
+                          "name": "LANGSMITH_PROJECT",
+                          "value": "[format('buddy-{0}', parameters('environment'))]"
+                        },
+                        {
+                          "name": "LANGSMITH_TRACING",
+                          "value": "true"
                         },
                         {
                           "name": "REDIS_QUEUE_RETRY_AFTER",

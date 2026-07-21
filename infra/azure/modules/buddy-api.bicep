@@ -62,6 +62,11 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/redis-access-key'
           identity: identity.id
         }
+        {
+          name: 'langsmith-api-key'
+          keyVaultUrl: '${keyVaultUri}secrets/langsmith-api-key'
+          identity: identity.id
+        }
       ]
     }
     template: {
@@ -105,6 +110,10 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'REDIS_PORT', value: redisPort }
             { name: 'REDIS_PASSWORD', secretRef: 'redis-password' }
             { name: 'BUDDY_API_KEY_PEPPER', secretRef: 'api-pepper' }
+            { name: 'LANGSMITH_API_KEY', secretRef: 'langsmith-api-key' }
+            { name: 'LANGSMITH_ENDPOINT', value: 'https://api.smith.langchain.com' }
+            { name: 'LANGSMITH_PROJECT', value: 'buddy-${environment}' }
+            { name: 'LANGSMITH_TRACING', value: 'true' }
             { name: 'BUDDY_MEMORY_BACKEND', value: 'hub' }
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
             { name: 'BUDDY_API_AUTH', value: 'true' }
