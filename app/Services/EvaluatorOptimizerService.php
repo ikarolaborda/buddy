@@ -19,6 +19,7 @@ use App\Models\BuddyRecommendation;
 use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Models\PromptVersion;
+use App\Services\Observability\LangSmithTracer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -28,6 +29,7 @@ class EvaluatorOptimizerService
         protected MemoryGateway $memory,
         protected TaskStateService $state,
         protected AgentProfileResolver $profiles,
+        protected LangSmithTracer $tracer,
     ) {}
 
     public function createTask(ProblemPacket $packet, ?int $apiClientId = null): BuddyTask
@@ -145,6 +147,8 @@ class EvaluatorOptimizerService
                 $this->state->transition($task, TaskStatus::Completed);
             });
 
+            $this->tracer->traceEvaluation($task, $run->refresh(), $memoryPage, $evaluation);
+
             return $domainResult;
         } catch (\Throwable $e) {
             Log::error(ucfirst($runType).' failed', [
@@ -162,6 +166,14 @@ class EvaluatorOptimizerService
             if (! $task->isTerminal() && $task->status === TaskStatus::Evaluating) {
                 $this->state->transition($task, TaskStatus::Failed);
             }
+
+            $this->tracer->traceEvaluation(
+                $task,
+                $run->refresh(),
+                $memoryPage ?? MemorySearchPage::degraded('unknown', 'run failed before memory search'),
+                null,
+                $e,
+            );
 
             throw $e;
         }

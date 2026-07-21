@@ -96,6 +96,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | LangSmith Observability
+    |--------------------------------------------------------------------------
+    |
+    | Fire-and-forget run-tree tracing per evaluation. Content (prompts,
+    | summaries) leaves the process only when send_prompts is enabled;
+    | the default payload is hashes, module IDs, memory IDs, and outcome
+    | metadata. Tracing failures never fail an evaluation.
+    |
+    */
+
+    'langsmith' => [
+        'tracing' => (bool) env('LANGSMITH_TRACING', false),
+        'api_key' => env('LANGSMITH_API_KEY', ''),
+        'endpoint' => env('LANGSMITH_ENDPOINT', 'https://api.smith.langchain.com'),
+        'project' => env('LANGSMITH_PROJECT', 'buddy-local'),
+        'send_prompts' => (bool) env('LANGSMITH_SEND_PROMPTS', false),
+        'timeout' => (int) env('LANGSMITH_TIMEOUT', 2),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Health Checks
     |--------------------------------------------------------------------------
     */
