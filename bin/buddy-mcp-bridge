@@ -233,6 +233,17 @@ while (($line = fgets($stdin)) !== false) {
             break;
         case 'notifications/initialized':
             break;
+        case 'ping':
+            // The MCP spec requires an empty result; an error here makes
+            // clients treat the server as unhealthy and tear it down.
+            respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => new stdClass]);
+            break;
+        case 'prompts/list':
+            respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => ['prompts' => []]]);
+            break;
+        case 'resources/list':
+            respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => ['resources' => []]]);
+            break;
         case 'tools/list':
             respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => ['tools' => tool_definitions()]]);
             break;
