@@ -11,6 +11,12 @@
  * env file or OS secret store; never mount Buddy's application .env.
  */
 
+// Anything unexpected on stdout corrupts the JSON-RPC stream, so all
+// diagnostics are forced to stderr and curl_close (a PHP 8.5 deprecation
+// emitter, no-op since 8.0) is not used.
+error_reporting(E_ALL & ~E_DEPRECATED);
+ini_set('display_errors', 'stderr');
+
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 $baseUrl = rtrim((string) getenv('BUDDY_BASE_URL'), '/');
@@ -51,7 +57,6 @@ function http_request(string $method, string $path, ?array $body = null, array $
     $raw = curl_exec($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $error = curl_errno($ch) !== 0 ? curl_error($ch) : null;
-    curl_close($ch);
 
     if ($error !== null) {
         return [0, ['error' => $error]];
