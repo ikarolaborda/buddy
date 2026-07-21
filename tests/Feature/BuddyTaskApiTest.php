@@ -6,11 +6,19 @@ use App\Ai\Agents\EvaluatorOptimizerAgent;
 use App\Ai\Agents\PromptRefinementAgent;
 use App\Models\BuddyTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Ai\Embeddings;
 use Tests\TestCase;
 
 class BuddyTaskApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Embeddings::fake();
+    }
 
     public function test_can_create_task(): void
     {

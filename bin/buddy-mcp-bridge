@@ -1,0 +1,243 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * Thin stdio-to-HTTPS MCP bridge (plan §10.2, phase 1 transport).
+ *
+ * Receives only BUDDY_BASE_URL and BUDDY_API_KEY from the environment —
+ * no database, provider, or hub credentials. Maps MCP tool calls onto
+ * Buddy's authenticated REST API and negotiates the MCP protocol version
+ * instead of hard-coding one. Supply the two variables via a mode-0600
+ * env file or OS secret store; never mount Buddy's application .env.
+ */
+
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+
+$baseUrl = rtrim((string) getenv('BUDDY_BASE_URL'), '/');
+$apiKey = (string) getenv('BUDDY_API_KEY');
+
+if ($baseUrl === '') {
+    fwrite(STDERR, "BUDDY_BASE_URL is required\n");
+    exit(1);
+}
+
+function http_request(string $method, string $path, ?array $body = null, array $headers = []): array
+{
+    global $baseUrl, $apiKey;
+
+    $ch = curl_init($baseUrl.$path);
+
+    $requestHeaders = array_merge([
+        'Accept: application/json',
+        'Content-Type: application/json',
+    ], $headers);
+
+    if ($apiKey !== '') {
+        $requestHeaders[] = 'Authorization: Bearer '.$apiKey;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_HTTPHEADER => $requestHeaders,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 150,
+    ]);
+
+    if ($body !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+    }
+
+    $raw = curl_exec($ch);
+    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_errno($ch) !== 0 ? curl_error($ch) : null;
+    curl_close($ch);
+
+    if ($error !== null) {
+        return [0, ['error' => $error]];
+    }
+
+    $decoded = json_decode((string) $raw, true);
+
+    return [$status, is_array($decoded) ? $decoded : ['raw' => $raw]];
+}
+
+function tool_definitions(): array
+{
+    $taskId = ['type' => 'string', 'description' => 'Task ULID returned by buddy.submit_problem.'];
+
+    return [
+        [
+            'name' => 'buddy.submit_problem',
+            'description' => 'Submit a problem packet to Buddy. Returns a task ULID to poll.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'source_agent' => ['type' => 'string'],
+                    'task_summary' => ['type' => 'string'],
+                    'problem_type' => ['type' => 'string'],
+                    'repo' => ['type' => 'string'],
+                    'branch' => ['type' => 'string'],
+                    'constraints' => ['type' => 'array', 'items' => ['type' => 'string']],
+                    'evidence' => ['type' => 'array', 'items' => ['type' => 'object']],
+                    'requested_outcome' => ['type' => 'string'],
+                ],
+                'required' => ['source_agent', 'task_summary', 'problem_type'],
+            ],
+        ],
+        [
+            'name' => 'buddy.get_task_status',
+            'description' => 'Get the current status and recommendations for a Buddy task.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => ['task_id' => $taskId],
+                'required' => ['task_id'],
+            ],
+        ],
+        [
+            'name' => 'buddy.evaluate_task',
+            'description' => 'Trigger asynchronous evaluation of a submitted task.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => ['task_id' => $taskId],
+                'required' => ['task_id'],
+            ],
+        ],
+        [
+            'name' => 'buddy.refine_prompt',
+            'description' => 'Refine a vague task into an execution-ready engineering brief.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => ['task_id' => $taskId],
+                'required' => ['task_id'],
+            ],
+        ],
+        [
+            'name' => 'buddy.attach_artifact',
+            'description' => 'Attach an artifact (log, diff, test output) to a task.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'task_id' => $taskId,
+                    'type' => ['type' => 'string'],
+                    'content' => ['type' => 'string'],
+                    'metadata' => ['type' => 'object'],
+                ],
+                'required' => ['task_id', 'type', 'content'],
+            ],
+        ],
+        [
+            'name' => 'buddy.close_task',
+            'description' => 'Close a task, optionally storing a learnings summary.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'task_id' => $taskId,
+                    'learnings_summary' => ['type' => 'string'],
+                ],
+                'required' => ['task_id'],
+            ],
+        ],
+    ];
+}
+
+function call_tool(string $name, array $args): array
+{
+    switch ($name) {
+        case 'buddy.submit_problem':
+            $idempotencyKey = hash('sha256', json_encode($args).':'.gmdate('Y-m-d\TH:i'));
+
+            [$status, $body] = http_request('POST', '/api/buddy/tasks', $args, [
+                'Idempotency-Key: '.$idempotencyKey,
+            ]);
+            break;
+        case 'buddy.get_task_status':
+            [$status, $body] = http_request('GET', '/api/buddy/tasks/'.rawurlencode($args['task_id']));
+            break;
+        case 'buddy.evaluate_task':
+            [$status, $body] = http_request('POST', '/api/buddy/tasks/'.rawurlencode($args['task_id']).'/evaluate', ['async' => true]);
+            break;
+        case 'buddy.refine_prompt':
+            [$status, $body] = http_request('POST', '/api/buddy/tasks/'.rawurlencode($args['task_id']).'/refine', []);
+            break;
+        case 'buddy.attach_artifact':
+            $taskId = $args['task_id'];
+            unset($args['task_id']);
+            [$status, $body] = http_request('POST', '/api/buddy/tasks/'.rawurlencode($taskId).'/artifacts', $args);
+            break;
+        case 'buddy.close_task':
+            $taskId = $args['task_id'];
+            unset($args['task_id']);
+            [$status, $body] = http_request('POST', '/api/buddy/tasks/'.rawurlencode($taskId).'/close', $args);
+            break;
+        default:
+            return ['isError' => true, 'content' => [['type' => 'text', 'text' => "Unknown tool: {$name}"]]];
+    }
+
+    $text = json_encode(['http_status' => $status, 'body' => $body], JSON_PRETTY_PRINT);
+
+    return [
+        'isError' => $status === 0 || $status >= 400,
+        'content' => [['type' => 'text', 'text' => $text]],
+    ];
+}
+
+function respond(array $response): void
+{
+    fwrite(STDOUT, json_encode($response)."\n");
+    fflush(STDOUT);
+}
+
+$stdin = fopen('php://stdin', 'r');
+
+while (($line = fgets($stdin)) !== false) {
+    $line = trim($line);
+
+    if ($line === '') {
+        continue;
+    }
+
+    $request = json_decode($line, true);
+
+    if (! is_array($request)) {
+        respond(['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32700, 'message' => 'Parse error']]);
+
+        continue;
+    }
+
+    $id = $request['id'] ?? null;
+    $method = $request['method'] ?? '';
+    $params = $request['params'] ?? [];
+
+    switch ($method) {
+        case 'initialize':
+            $requested = $params['protocolVersion'] ?? null;
+            $negotiated = in_array($requested, SUPPORTED_PROTOCOL_VERSIONS, true)
+                ? $requested
+                : SUPPORTED_PROTOCOL_VERSIONS[0];
+
+            respond([
+                'jsonrpc' => '2.0',
+                'id' => $id,
+                'result' => [
+                    'protocolVersion' => $negotiated,
+                    'capabilities' => ['tools' => new stdClass],
+                    'serverInfo' => ['name' => 'buddy-mcp-bridge', 'version' => '1.0.0'],
+                ],
+            ]);
+            break;
+        case 'notifications/initialized':
+            break;
+        case 'tools/list':
+            respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => ['tools' => tool_definitions()]]);
+            break;
+        case 'tools/call':
+            $result = call_tool($params['name'] ?? '', $params['arguments'] ?? []);
+            respond(['jsonrpc' => '2.0', 'id' => $id, 'result' => $result]);
+            break;
+        default:
+            if ($id !== null) {
+                respond(['jsonrpc' => '2.0', 'id' => $id, 'error' => ['code' => -32601, 'message' => "Method not found: {$method}"]]);
+            }
+    }
+}

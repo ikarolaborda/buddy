@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\DTOs\MemorySearchResult;
+use App\Exceptions\MemoryUnavailableException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -14,13 +15,18 @@ class QdrantMemoryService
     /**
      * @param  array<string, mixed>  $filters
      * @return array<int, MemorySearchResult>
+     *
+     * @throws MemoryUnavailableException when embedding or Qdrant transport fails,
+     *                                    so callers can report degraded grounding
+     *                                    instead of silently treating failure as
+     *                                    an empty result set
      */
     public function search(string $query, int $limit = 5, array $filters = []): array
     {
         $embedding = $this->embed($query);
 
         if ($embedding === []) {
-            return [];
+            throw new MemoryUnavailableException('Embedding generation failed');
         }
 
         $body = [
@@ -51,7 +57,7 @@ class QdrantMemoryService
                 'body' => $raw,
             ]);
 
-            return [];
+            throw new MemoryUnavailableException("Qdrant search failed with status {$status}");
         }
 
         $decoded = json_decode($raw, true);

@@ -9,38 +9,85 @@ use App\Http\Requests\Buddy\AttachArtifactRequest;
 use App\Http\Requests\Buddy\CloseTaskRequest;
 use App\Http\Requests\Buddy\CreateTaskRequest;
 use App\Http\Resources\Buddy\BuddyTaskResource;
-use App\Jobs\EvaluateTaskJob;
+use App\Models\ApiClient;
 use App\Models\BuddyTask;
+use App\Models\IdempotencyRecord;
 use App\Services\EvaluatorOptimizerService;
+use App\Services\IdempotencyService;
+use App\Services\OutboxPublisher;
+use App\Services\TaskStateService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 #[Middleware('throttle:60,1')]
 class BuddyTaskController extends Controller
 {
     public function __construct(
         protected EvaluatorOptimizerService $evaluator,
+        protected IdempotencyService $idempotency,
+        protected OutboxPublisher $outbox,
+        protected TaskStateService $state,
     ) {}
 
     public function store(CreateTaskRequest $request): JsonResponse
     {
-        $packet = ProblemPacket::fromArray($request->validated());
-        $task = $this->evaluator->createTask($packet);
+        $client = $request->attributes->get('api_client');
+        $idempotencyKey = $request->header('Idempotency-Key');
+        $requestHash = $this->idempotency->hashRequest($request->validated());
 
-        foreach ($request->input('artifacts', []) as $artifact) {
-            $task->artifacts()->create([
-                'type' => $artifact['type'],
-                'content' => $artifact['content'],
-                'metadata' => $artifact['metadata'] ?? null,
-            ]);
+        $reservation = null;
+
+        if ($client instanceof ApiClient) {
+            if ($idempotencyKey === null || $idempotencyKey === '') {
+                return response()->json([
+                    'error' => 'Idempotency-Key header is required for task submission.',
+                ], 422);
+            }
+
+            $result = $this->reserveIdempotencyKey($client, $idempotencyKey, $requestHash);
+
+            if ($result instanceof JsonResponse) {
+                return $result;
+            }
+
+            $reservation = $result;
         }
+
+        $packet = ProblemPacket::fromArray($request->validated());
+
+        $task = DB::transaction(function () use ($request, $packet, $client) {
+            $task = $this->evaluator->createTask($packet, $client?->id);
+
+            foreach ($request->input('artifacts', []) as $artifact) {
+                $task->artifacts()->create([
+                    'type' => $artifact['type'],
+                    'content' => $artifact['content'],
+                    'metadata' => $artifact['metadata'] ?? null,
+                ]);
+            }
+
+            return $task;
+        });
 
         $task->loadCount(['runs', 'artifacts']);
 
-        return (new BuddyTaskResource($task))
+        $response = (new BuddyTaskResource($task))
             ->response()
             ->setStatusCode(201);
+
+        if ($reservation instanceof IdempotencyRecord) {
+            $reservation->update([
+                'buddy_task_id' => $task->id,
+                'response_status' => 201,
+                'response_body' => $response->getData(true),
+            ]);
+        }
+
+        return $response;
     }
 
     public function show(BuddyTask $task): BuddyTaskResource
@@ -83,9 +130,13 @@ class BuddyTaskController extends Controller
                 ], 422);
             }
 
-            EvaluateTaskJob::dispatch($task);
+            DB::transaction(function () use ($task) {
+                if ($task->status === TaskStatus::Pending) {
+                    $this->state->transition($task, TaskStatus::Evaluating);
+                }
 
-            $task->update(['status' => TaskStatus::Evaluating]);
+                $this->outbox->appendTaskSubmitted($task);
+            });
 
             return response()->json([
                 'task_id' => $task->ulid,
@@ -106,9 +157,13 @@ class BuddyTaskController extends Controller
                 'evaluation' => $result->toArray(),
             ]);
         } catch (\Throwable $e) {
+            Log::error('Evaluation failed', [
+                'task_ulid' => $task->ulid,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'error' => 'Evaluation failed.',
-                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -132,9 +187,13 @@ class BuddyTaskController extends Controller
                 'refinement' => $result->toArray(),
             ]);
         } catch (\Throwable $e) {
+            Log::error('Refinement failed', [
+                'task_ulid' => $task->ulid,
+                'error' => $e->getMessage(),
+            ]);
+
             return response()->json([
                 'error' => 'Refinement failed.',
-                'message' => $e->getMessage(),
             ], 500);
         }
     }
@@ -156,5 +215,42 @@ class BuddyTaskController extends Controller
             'task_id' => $task->ulid,
             'status' => 'closed',
         ]);
+    }
+
+    protected function reserveIdempotencyKey(
+        ApiClient $client,
+        string $key,
+        string $requestHash,
+    ): IdempotencyRecord|JsonResponse {
+        try {
+            return IdempotencyRecord::create([
+                'api_client_id' => $client->id,
+                'idempotency_key' => $key,
+                'request_hash' => $requestHash,
+                'expires_at' => now()->addDay(),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            $existing = $this->idempotency->find($client, $key);
+
+            if ($existing === null) {
+                return response()->json(['error' => 'Idempotency conflict.'], 409);
+            }
+
+            if ($existing->request_hash !== $requestHash) {
+                return response()->json([
+                    'error' => 'Idempotency-Key was already used with a different request payload.',
+                ], 409);
+            }
+
+            if ($existing->response_body === null) {
+                return response()->json([
+                    'error' => 'A request with this Idempotency-Key is still being processed.',
+                ], 409);
+            }
+
+            return response()
+                ->json($existing->response_body, (int) $existing->response_status)
+                ->header('Idempotency-Replayed', 'true');
+        }
     }
 }

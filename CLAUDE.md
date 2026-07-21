@@ -4,7 +4,7 @@
 
 Buddy is an evaluator-optimizer sidecar agent for engineering workflows. It is called by primary coding agents (Claude, Cursor, Copilot, etc.) when work becomes slow, ambiguous, or repeatedly unsuccessful.
 
-Buddy exposes 8 MCP tools and 6 REST API endpoints. It runs inside Docker (PHP 8.5) and uses GPT-5.4 via laravel/ai for AI evaluation.
+Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints behind API-key auth). It runs inside Docker (PHP 8.5) and uses GPT-5.4 via laravel/ai for AI evaluation. The production architecture (API-key auth, idempotency, outbox, task leases, MemoryGateway, prompt modules, Azure IaC) is described in docs/plans/2026-07-21-buddy-production-sidecar-architecture.md and docs/adr/.
 
 ## Stack
 
@@ -17,12 +17,16 @@ Buddy exposes 8 MCP tools and 6 REST API endpoints. It runs inside Docker (PHP 8
 ## Commands
 
 - `composer dev` — Start dev server + queue + logs + vite
-- `php artisan test` — Run test suite (30 tests, 130 assertions)
+- `php artisan test` — Run test suite
 - `./vendor/bin/pint` — Format code
 - `php artisan buddy:mcp-server` — Start MCP stdio server
+- `php artisan buddy:client:create <name>` — Create an API client and issue a key
+- `php artisan buddy:outbox-relay --once` — Republish unprocessed outbox messages
+- `php artisan buddy:cil-report` — Report-only Controlled Improvement Loop metrics
 - `php artisan migrate:fresh` — Reset database
 - `docker compose build` — Build Docker image
-- `docker compose up -d` — Start app + queue worker
+- `docker compose up -d` — Start app + queue worker + redis
+- `bin/buddy-mcp-bridge` — Thin stdio-to-HTTPS MCP bridge (needs BUDDY_BASE_URL + BUDDY_API_KEY)
 
 ## Code Conventions
 

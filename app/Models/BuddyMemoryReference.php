@@ -10,6 +10,12 @@ class BuddyMemoryReference extends Model
     protected $fillable = [
         'buddy_task_id',
         'qdrant_point_id',
+        'memory_id',
+        'backend',
+        'project',
+        'revision',
+        'memory_status',
+        'use_rationale',
         'similarity_score',
         'memory_summary',
         'tags',

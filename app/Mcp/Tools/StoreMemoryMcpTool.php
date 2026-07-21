@@ -2,8 +2,9 @@
 
 namespace App\Mcp\Tools;
 
+use App\Contracts\MemoryGateway;
+use App\DTOs\MemoryCandidate;
 use App\Mcp\BaseMcpTool;
-use App\Services\QdrantMemoryService;
 
 class StoreMemoryMcpTool extends BaseMcpTool
 {
@@ -38,11 +39,7 @@ class StoreMemoryMcpTool extends BaseMcpTool
 
     public function handle(array $arguments): array
     {
-        /** @var QdrantMemoryService $memory */
-        $memory = app(QdrantMemoryService::class);
-
         $payload = array_filter([
-            'tags' => $arguments['tags'] ?? [],
             'task_intent' => $arguments['task_intent'] ?? null,
             'stack' => $arguments['stack'] ?? null,
             'subsystem' => $arguments['subsystem'] ?? null,
@@ -52,15 +49,20 @@ class StoreMemoryMcpTool extends BaseMcpTool
             'outcome' => $arguments['outcome'] ?? null,
         ]);
 
-        $pointId = $memory->store($arguments['summary'], $payload);
+        $receipt = app(MemoryGateway::class)->store(new MemoryCandidate(
+            summary: $arguments['summary'],
+            tags: $arguments['tags'] ?? [],
+            payload: $payload,
+        ));
 
-        if (! $pointId) {
-            return $this->textResponse('Failed to store memory. Check Qdrant connection and OpenAI API key.');
+        if ($receipt === null) {
+            return $this->textResponse('Failed to store memory. Check memory backend connectivity.');
         }
 
         return $this->textResponse(json_encode([
             'stored' => true,
-            'point_id' => $pointId,
+            'memory_id' => $receipt->memoryId,
+            'backend' => $receipt->backend,
         ], JSON_THROW_ON_ERROR));
     }
 

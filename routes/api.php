@@ -1,13 +1,29 @@
 <?php
 
 use App\Http\Controllers\Api\Buddy\BuddyTaskController;
+use App\Http\Controllers\Api\HealthController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('health', [HealthController::class, 'health'])->name('health');
+Route::get('ready', [HealthController::class, 'ready'])->name('ready');
+
 Route::prefix('buddy')->group(function () {
-    Route::post('tasks', [BuddyTaskController::class, 'store']);
-    Route::get('tasks/{task}', [BuddyTaskController::class, 'show']);
-    Route::post('tasks/{task}/artifacts', [BuddyTaskController::class, 'attachArtifact']);
-    Route::post('tasks/{task}/evaluate', [BuddyTaskController::class, 'evaluate']);
-    Route::post('tasks/{task}/refine', [BuddyTaskController::class, 'refine']);
-    Route::post('tasks/{task}/close', [BuddyTaskController::class, 'close']);
+    Route::post('tasks', [BuddyTaskController::class, 'store'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.store');
+    Route::get('tasks/{task}', [BuddyTaskController::class, 'show'])
+        ->middleware('auth.buddy:tasks:read')
+        ->name('buddy.tasks.show');
+    Route::post('tasks/{task}/artifacts', [BuddyTaskController::class, 'attachArtifact'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.artifacts');
+    Route::post('tasks/{task}/evaluate', [BuddyTaskController::class, 'evaluate'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.evaluate');
+    Route::post('tasks/{task}/refine', [BuddyTaskController::class, 'refine'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.refine');
+    Route::post('tasks/{task}/close', [BuddyTaskController::class, 'close'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.close');
 });

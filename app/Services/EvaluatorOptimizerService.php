@@ -4,8 +4,12 @@ namespace App\Services;
 
 use App\Ai\Agents\EvaluatorOptimizerAgent;
 use App\Ai\Agents\PromptRefinementAgent;
+use App\Ai\Prompting\AgentProfileResolver;
+use App\Contracts\MemoryGateway;
 use App\DTOs\EvaluationResult;
-use App\DTOs\MemorySearchResult;
+use App\DTOs\MemoryCandidate;
+use App\DTOs\MemoryQuery;
+use App\DTOs\MemorySearchPage;
 use App\DTOs\ProblemPacket;
 use App\DTOs\RefinementResult;
 use App\Enums\RunStatus;
@@ -14,18 +18,22 @@ use App\Models\BuddyDecisionLog;
 use App\Models\BuddyRecommendation;
 use App\Models\BuddyRun;
 use App\Models\BuddyTask;
+use App\Models\PromptVersion;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class EvaluatorOptimizerService
 {
     public function __construct(
-        protected QdrantMemoryService $memoryService,
+        protected MemoryGateway $memory,
+        protected TaskStateService $state,
+        protected AgentProfileResolver $profiles,
     ) {}
 
-    public function createTask(ProblemPacket $packet): BuddyTask
+    public function createTask(ProblemPacket $packet, ?int $apiClientId = null): BuddyTask
     {
         return BuddyTask::create([
+            'api_client_id' => $apiClientId,
             'source_agent' => $packet->sourceAgent,
             'repo' => $packet->repo,
             'branch' => $packet->branch,
@@ -41,89 +49,105 @@ class EvaluatorOptimizerService
 
     public function evaluate(BuddyTask $task): EvaluationResult
     {
-        if ($task->isTerminal()) {
-            throw new \RuntimeException("Task {$task->ulid} is already in terminal state: {$task->status->value}");
-        }
+        return $this->executeRun($task, 'evaluation', function (BuddyTask $task, BuddyRun $run) {
+            $agent = new EvaluatorOptimizerAgent($task);
+            $this->recordRunConfiguration($run, EvaluatorOptimizerAgent::AGENT_KEY, $agent->promptBundle()->contentHash, $agent->promptBundle()->moduleIds);
 
-        $task->update(['status' => TaskStatus::Evaluating]);
+            $response = $agent->prompt($agent->buildPrompt());
 
-        $run = $this->createRun($task);
-
-        try {
-            $memoryHits = $this->searchMemory($task);
-            $this->storeMemoryReferences($task, $memoryHits);
-
-            $result = $this->runAgent($task);
-
-            $this->storeRecommendation($run, $result);
-            $this->logDecision($task, $run, $result);
-
-            $run->update([
-                'status' => RunStatus::Completed,
-                'completed_at' => now(),
+            $result = EvaluationResult::fromArray([
+                'accepted' => $response['accepted'],
+                'confidence' => $response['confidence'],
+                'summary' => $response['summary'],
+                'recommended_plan' => $response['recommended_plan'] ?? [],
+                'rejected_reasons' => $response['rejected_reasons'] ?? [],
+                'required_followups' => $response['required_followups'] ?? [],
+                'risks' => $response['risks'] ?? [],
+                'next_actions' => $response['next_actions'] ?? [],
+                'memory_hits' => $response['memory_hits'] ?? [],
             ]);
 
-            $task->update(['status' => TaskStatus::Completed]);
-
-            return $result;
-        } catch (\Throwable $e) {
-            Log::error('Evaluation failed', [
-                'task_ulid' => $task->ulid,
-                'run_id' => $run->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $run->update([
-                'status' => RunStatus::Failed,
-                'completed_at' => now(),
-            ]);
-
-            $task->update(['status' => TaskStatus::Failed]);
-
-            throw $e;
-        }
-    }
-
-    public function closeTask(BuddyTask $task, ?string $learningsSummary = null): void
-    {
-        DB::transaction(function () use ($task, $learningsSummary) {
-            $task->update(['status' => TaskStatus::Closed]);
-
-            if ($learningsSummary) {
-                $this->storeLearnings($task, $learningsSummary);
-            }
+            return [$result, $result, null];
         });
     }
 
     public function refine(BuddyTask $task): RefinementResult
     {
+        return $this->executeRun($task, 'refinement', function (BuddyTask $task, BuddyRun $run) {
+            $agent = new PromptRefinementAgent($task);
+            $this->recordRunConfiguration($run, PromptRefinementAgent::AGENT_KEY, $agent->promptBundle()->contentHash, $agent->promptBundle()->moduleIds);
+
+            $response = $agent->prompt($agent->buildPrompt());
+
+            $result = RefinementResult::fromArray([
+                'accepted' => $response['accepted'],
+                'confidence' => $response['confidence'],
+                'summary' => $response['summary'],
+                'normalized_task' => $response['normalized_task'],
+                'task_intent' => $response['task_intent'],
+                'final_execution_prompt' => $response['final_execution_prompt'],
+                'clarified_constraints' => $response['clarified_constraints'] ?? [],
+                'recommended_tool_sequence' => $response['recommended_tool_sequence'] ?? [],
+                'execution_checklist' => $response['execution_checklist'] ?? [],
+                'risks' => $response['risks'] ?? [],
+                'missing_information' => $response['missing_information'] ?? [],
+                'verification_plan' => $response['verification_plan'] ?? [],
+                'memory_hits' => $response['memory_hits'] ?? [],
+            ]);
+
+            return [$result, $this->refinementToEvaluation($result), $result->toArray()];
+        });
+    }
+
+    public function closeTask(BuddyTask $task, ?string $learningsSummary = null): void
+    {
+        DB::transaction(function () use ($task) {
+            $this->state->transition($task, TaskStatus::Closed);
+        });
+
+        if ($learningsSummary) {
+            $this->storeLearnings($task, $learningsSummary);
+        }
+    }
+
+    /**
+     * The agent/network call runs outside any database transaction; only
+     * result persistence is transactional. Callback returns
+     * [domain result, evaluation projection, refinement payload|null].
+     */
+    protected function executeRun(BuddyTask $task, string $runType, callable $callback): mixed
+    {
         if ($task->isTerminal()) {
             throw new \RuntimeException("Task {$task->ulid} is already in terminal state: {$task->status->value}");
         }
 
-        $task->update(['status' => TaskStatus::Evaluating]);
+        if ($task->status === TaskStatus::Pending) {
+            $this->state->transition($task, TaskStatus::Evaluating);
+        }
 
-        $run = $this->createRun($task);
+        $run = $this->createRun($task, $runType);
 
         try {
-            $memoryHits = $this->searchMemory($task);
-            $this->storeMemoryReferences($task, $memoryHits);
+            $memoryPage = $this->searchMemory($task);
+            $this->storeMemoryReferences($task, $memoryPage);
 
-            $result = $this->runRefinementAgent($task);
+            [$domainResult, $evaluation, $refinementPayload] = $callback($task, $run);
 
-            $this->storeRecommendation($run, $this->refinementToEvaluation($result));
-            $this->logDecision($task, $run, $this->refinementToEvaluation($result));
+            DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload) {
+                $this->storeRecommendation($run, $evaluation, $refinementPayload);
+                $this->logDecision($task, $run, $evaluation, $memoryPage);
 
-            $run->update([
-                'status' => RunStatus::Completed,
-                'completed_at' => now(),
-            ]);
+                $run->update([
+                    'status' => RunStatus::Completed,
+                    'completed_at' => now(),
+                ]);
 
-            $task->update(['status' => TaskStatus::Completed]);
+                $this->state->transition($task, TaskStatus::Completed);
+            });
 
-            return $result;
+            return $domainResult;
         } catch (\Throwable $e) {
-            Log::error('Refinement failed', [
+            Log::error(ucfirst($runType).' failed', [
                 'task_ulid' => $task->ulid,
                 'run_id' => $run->id,
                 'error' => $e->getMessage(),
@@ -131,37 +155,16 @@ class EvaluatorOptimizerService
 
             $run->update([
                 'status' => RunStatus::Failed,
+                'error_class' => $e::class,
                 'completed_at' => now(),
             ]);
 
-            $task->update(['status' => TaskStatus::Failed]);
+            if (! $task->isTerminal() && $task->status === TaskStatus::Evaluating) {
+                $this->state->transition($task, TaskStatus::Failed);
+            }
 
             throw $e;
         }
-    }
-
-    protected function runRefinementAgent(BuddyTask $task): RefinementResult
-    {
-        $agent = new PromptRefinementAgent($task);
-        $prompt = $agent->buildPrompt();
-
-        $response = $agent->prompt($prompt);
-
-        return RefinementResult::fromArray([
-            'accepted' => $response['accepted'],
-            'confidence' => $response['confidence'],
-            'summary' => $response['summary'],
-            'normalized_task' => $response['normalized_task'],
-            'task_intent' => $response['task_intent'],
-            'final_execution_prompt' => $response['final_execution_prompt'],
-            'clarified_constraints' => $response['clarified_constraints'] ?? [],
-            'recommended_tool_sequence' => $response['recommended_tool_sequence'] ?? [],
-            'execution_checklist' => $response['execution_checklist'] ?? [],
-            'risks' => $response['risks'] ?? [],
-            'missing_information' => $response['missing_information'] ?? [],
-            'verification_plan' => $response['verification_plan'] ?? [],
-            'memory_hits' => $response['memory_hits'] ?? [],
-        ]);
     }
 
     protected function refinementToEvaluation(RefinementResult $result): EvaluationResult
@@ -179,57 +182,60 @@ class EvaluatorOptimizerService
         );
     }
 
-    protected function createRun(BuddyTask $task): BuddyRun
+    protected function createRun(BuddyTask $task, string $runType): BuddyRun
     {
-        $runNumber = $task->runs()->count() + 1;
+        return DB::transaction(function () use ($task, $runType) {
+            $locked = BuddyTask::query()
+                ->whereKey($task->id)
+                ->lockForUpdate()
+                ->first();
 
-        return BuddyRun::create([
-            'buddy_task_id' => $task->id,
-            'run_number' => $runNumber,
-            'status' => RunStatus::Started,
-            'model_used' => config('buddy.model', 'gpt-5.4'),
-            'started_at' => now(),
-        ]);
-    }
+            $runNumber = $locked->runs()->max('run_number') + 1;
 
-    protected function runAgent(BuddyTask $task): EvaluationResult
-    {
-        $agent = new EvaluatorOptimizerAgent($task);
-        $prompt = $agent->buildPrompt();
-
-        $response = $agent->prompt($prompt);
-
-        return EvaluationResult::fromArray([
-            'accepted' => $response['accepted'],
-            'confidence' => $response['confidence'],
-            'summary' => $response['summary'],
-            'recommended_plan' => $response['recommended_plan'] ?? [],
-            'rejected_reasons' => $response['rejected_reasons'] ?? [],
-            'required_followups' => $response['required_followups'] ?? [],
-            'risks' => $response['risks'] ?? [],
-            'next_actions' => $response['next_actions'] ?? [],
-            'memory_hits' => $response['memory_hits'] ?? [],
-        ]);
+            return BuddyRun::create([
+                'buddy_task_id' => $task->id,
+                'run_number' => $runNumber,
+                'run_type' => $runType,
+                'status' => RunStatus::Started,
+                'started_at' => now(),
+            ]);
+        });
     }
 
     /**
-     * @return array<int, MemorySearchResult>
+     * @param  array<int, string>  $moduleIds
      */
-    protected function searchMemory(BuddyTask $task): array
+    protected function recordRunConfiguration(BuddyRun $run, string $agentKey, string $promptHash, array $moduleIds): void
+    {
+        $profile = $this->profiles->resolve($agentKey);
+
+        PromptVersion::firstOrCreate(
+            ['agent' => $agentKey, 'content_hash' => $promptHash],
+            ['module_ids' => $moduleIds, 'module_hashes' => []],
+        );
+
+        $run->update([
+            'model_used' => $profile['model'],
+            'provider' => $profile['provider'],
+            'prompt_hash' => $promptHash,
+            'prompt_modules' => $moduleIds,
+        ]);
+    }
+
+    protected function searchMemory(BuddyTask $task): MemorySearchPage
     {
         $query = "{$task->problem_type->value}: {$task->task_summary}";
 
-        return $this->memoryService->search($query);
+        return $this->memory->search(new MemoryQuery($query));
     }
 
-    /**
-     * @param  array<int, MemorySearchResult>  $memoryHits
-     */
-    protected function storeMemoryReferences(BuddyTask $task, array $memoryHits): void
+    protected function storeMemoryReferences(BuddyTask $task, MemorySearchPage $page): void
     {
-        foreach ($memoryHits as $hit) {
+        foreach ($page->results as $hit) {
             $task->memoryReferences()->create([
                 'qdrant_point_id' => $hit->pointId,
+                'memory_id' => $hit->pointId,
+                'backend' => $page->backend,
                 'similarity_score' => $hit->score,
                 'memory_summary' => $hit->summary,
                 'tags' => $hit->tags,
@@ -237,7 +243,7 @@ class EvaluatorOptimizerService
         }
     }
 
-    protected function storeRecommendation(BuddyRun $run, EvaluationResult $result): BuddyRecommendation
+    protected function storeRecommendation(BuddyRun $run, EvaluationResult $result, ?array $refinementPayload): BuddyRecommendation
     {
         return BuddyRecommendation::create([
             'buddy_run_id' => $run->id,
@@ -250,10 +256,11 @@ class EvaluatorOptimizerService
             'risks' => $result->risks,
             'next_actions' => $result->nextActions,
             'memory_hits' => $result->memoryHits,
+            'refinement' => $refinementPayload,
         ]);
     }
 
-    protected function logDecision(BuddyTask $task, BuddyRun $run, EvaluationResult $result): void
+    protected function logDecision(BuddyTask $task, BuddyRun $run, EvaluationResult $result, MemorySearchPage $memoryPage): void
     {
         BuddyDecisionLog::create([
             'buddy_task_id' => $task->id,
@@ -264,6 +271,9 @@ class EvaluatorOptimizerService
                 'confidence' => $result->confidence->value,
                 'risks_count' => count($result->risks),
                 'memory_hits_count' => count($result->memoryHits),
+                'memory_backend' => $memoryPage->backend,
+                'memory_degraded' => $memoryPage->degraded,
+                'memory_degraded_reason' => $memoryPage->degradedReason,
             ],
         ]);
     }
@@ -277,16 +287,19 @@ class EvaluatorOptimizerService
             'source_agent' => $task->source_agent,
             'outcome' => $recommendation?->accepted ? 'accepted' : 'rejected',
             'confidence' => $recommendation?->confidence->value ?? 'none',
-            'tags' => [
-                $task->problem_type->value,
-                'buddy_learning',
-            ],
         ];
 
         if ($task->repo) {
             $payload['repo'] = $task->repo;
         }
 
-        $this->memoryService->store($summary, $payload);
+        $this->memory->store(new MemoryCandidate(
+            summary: $summary,
+            tags: [$task->problem_type->value, 'buddy_learning'],
+            payload: $payload,
+            problem: $task->task_summary,
+            solution: $summary,
+            impact: 'Outcome: '.($payload['outcome'] ?? 'unknown').' (confidence: '.($payload['confidence'] ?? 'none').')',
+        ));
     }
 }

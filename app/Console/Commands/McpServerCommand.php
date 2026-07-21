@@ -86,7 +86,7 @@ class McpServerCommand extends Command
         $method = $request['method'] ?? '';
 
         return match ($method) {
-            'initialize' => $this->handleInitialize($id),
+            'initialize' => $this->handleInitialize($id, $request['params'] ?? []),
             'notifications/initialized' => [], // notification, no response needed
             'tools/list' => $this->handleToolsList($id),
             'tools/call' => $this->handleToolsCall($id, $request['params'] ?? []),
@@ -94,16 +94,25 @@ class McpServerCommand extends Command
         };
     }
 
+    protected const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+
     /**
+     * @param  array<string, mixed>  $params
      * @return array<string, mixed>
      */
-    protected function handleInitialize(mixed $id): array
+    protected function handleInitialize(mixed $id, array $params): array
     {
+        $requested = $params['protocolVersion'] ?? null;
+
+        $negotiated = in_array($requested, self::SUPPORTED_PROTOCOL_VERSIONS, true)
+            ? $requested
+            : self::SUPPORTED_PROTOCOL_VERSIONS[0];
+
         return [
             'jsonrpc' => '2.0',
             'id' => $id,
             'result' => [
-                'protocolVersion' => '2024-11-05',
+                'protocolVersion' => $negotiated,
                 'capabilities' => [
                     'tools' => new \stdClass,
                 ],

@@ -19,6 +19,7 @@ class BuddyRecommendation extends Model
         'risks',
         'next_actions',
         'memory_hits',
+        'refinement',
     ];
 
     protected function casts(): array
@@ -32,6 +33,7 @@ class BuddyRecommendation extends Model
             'risks' => 'array',
             'next_actions' => 'array',
             'memory_hits' => 'array',
+            'refinement' => 'array',
         ];
     }
 

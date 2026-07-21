@@ -28,6 +28,11 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="BUDDY_API_AUTH" value="false"/>
+        <env name="BUDDY_API_KEY_PEPPER" value="testing-pepper"/>
+        <env name="QDRANT_HOST" value="http://127.0.0.1"/>
+        <env name="QDRANT_PORT" value="1"/>
+        <env name="OPENAI_API_KEY" value="testing"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

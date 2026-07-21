@@ -16,11 +16,13 @@ class BuddyTask extends Model
 
     protected $fillable = [
         'ulid',
+        'api_client_id',
         'source_agent',
         'repo',
         'branch',
         'task_summary',
         'problem_type',
+        'operation',
         'constraints',
         'evidence',
         'requested_outcome',
@@ -35,6 +37,8 @@ class BuddyTask extends Model
             'status' => TaskStatus::class,
             'constraints' => 'array',
             'evidence' => 'array',
+            'lease_expires_at' => 'datetime',
+            'heartbeat_at' => 'datetime',
         ];
     }
 

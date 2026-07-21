@@ -2,7 +2,8 @@
 
 namespace App\Ai\Tools;
 
-use App\Services\QdrantMemoryService;
+use App\Contracts\MemoryGateway;
+use App\DTOs\MemoryQuery;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -18,23 +19,26 @@ class SearchMemoryTool implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        /** @var QdrantMemoryService $memory */
-        $memory = app(QdrantMemoryService::class);
-
-        $results = $memory->search(
+        $page = app(MemoryGateway::class)->search(new MemoryQuery(
             query: $request['query'],
             limit: $request['limit'] ?? 5,
-        );
+        ));
 
-        if ($results === []) {
+        if ($page->degraded) {
+            return "Memory grounding is unavailable ({$page->degradedReason}). "
+                .'State explicitly in your result that memory could not be consulted.';
+        }
+
+        if ($page->results === []) {
             return 'No relevant memories found.';
         }
 
         $formatted = array_map(fn ($r) => [
+            'memory_id' => $r->pointId,
             'score' => round($r->score, 3),
             'summary' => $r->summary,
             'tags' => $r->tags,
-        ], $results);
+        ], $page->results);
 
         return json_encode($formatted, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }

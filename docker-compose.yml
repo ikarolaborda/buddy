@@ -20,15 +20,27 @@ services:
     image: buddy-app
     depends_on:
       - app
+      - redis
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
     environment:
       - QDRANT_HOST=http://qdrant-memory-db
       - QDRANT_PORT=6333
+      - REDIS_HOST=redis
     networks:
       - qdrant-memory_default
-    command: ["php", "artisan", "queue:listen", "--tries=1", "--timeout=180"]
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=180"]
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - qdrant-memory_default
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
 
 networks:
   qdrant-memory_default:

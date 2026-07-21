@@ -14,4 +14,14 @@ enum TaskStatus: string
     {
         return in_array($this, [self::Completed, self::Failed, self::Closed], true);
     }
+
+    public function canTransitionTo(self $next): bool
+    {
+        return in_array($next, match ($this) {
+            self::Pending => [self::Evaluating, self::Closed],
+            self::Evaluating => [self::Completed, self::Failed],
+            self::Completed => [self::Closed],
+            self::Failed, self::Closed => [],
+        }, true);
+    }
 }

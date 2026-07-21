@@ -2,8 +2,9 @@
 
 namespace App\Mcp\Tools;
 
+use App\Contracts\MemoryGateway;
+use App\DTOs\MemoryQuery;
 use App\Mcp\BaseMcpTool;
-use App\Services\QdrantMemoryService;
 
 class SearchMemoryMcpTool extends BaseMcpTool
 {
@@ -32,29 +33,31 @@ class SearchMemoryMcpTool extends BaseMcpTool
 
     public function handle(array $arguments): array
     {
-        /** @var QdrantMemoryService $memory */
-        $memory = app(QdrantMemoryService::class);
-
         $filters = [];
         if (! empty($arguments['tags'])) {
             $filters['tags'] = $arguments['tags'];
         }
 
-        $results = $memory->search(
+        $page = app(MemoryGateway::class)->search(new MemoryQuery(
             query: $arguments['query'],
             limit: $arguments['limit'] ?? 5,
             filters: $filters,
-        );
+        ));
 
-        if ($results === []) {
+        if ($page->degraded) {
+            return $this->textResponse("Memory grounding unavailable: {$page->degradedReason}");
+        }
+
+        if ($page->results === []) {
             return $this->textResponse('No relevant memories found.');
         }
 
         $formatted = array_map(fn ($r) => [
+            'memory_id' => $r->pointId,
             'score' => round($r->score, 3),
             'summary' => $r->summary,
             'tags' => $r->tags,
-        ], $results);
+        ], $page->results);
 
         return $this->textResponse(json_encode($formatted, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
     }
