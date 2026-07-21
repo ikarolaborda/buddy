@@ -3,10 +3,16 @@
 use App\Http\Controllers\Api\Admin\ApiClientController;
 use App\Http\Controllers\Api\Buddy\BuddyTaskController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\McpController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('health', [HealthController::class, 'health'])->name('health');
 Route::get('ready', [HealthController::class, 'ready'])->name('ready');
+
+Route::post('mcp', [McpController::class, 'post'])
+    ->middleware('auth.buddy')
+    ->name('mcp.post');
+Route::get('mcp', [McpController::class, 'get'])->name('mcp.get');
 
 Route::post('admin/clients', [ApiClientController::class, 'store'])
     ->middleware('auth.buddy:admin')

@@ -271,6 +271,37 @@ Close a completed task and optionally store durable learnings in Qdrant.
 }
 ```
 
+## Using the Deployed Buddy with Zero Local Files (Remote MCP)
+
+The deployed Buddy serves native Streamable HTTP MCP at `/api/mcp` — no clone,
+no bridge script, nothing local except one config block:
+
+```json
+{
+  "mcpServers": {
+    "buddy": {
+      "type": "http",
+      "url": "https://<your-buddy-host>/api/mcp",
+      "headers": {
+        "Authorization": "Bearer bdy_live_..."
+      }
+    }
+  }
+}
+```
+
+Or from the CLI:
+
+```bash
+claude mcp add --transport http buddy https://<your-buddy-host>/api/mcp \
+  --header "Authorization: Bearer bdy_live_..."
+```
+
+Same six tools, same per-client isolation, same scopes as the REST API. The
+server is stateless (no SSE stream; GET returns 405 as the spec permits).
+Static bearer auth is intended for your own agents; spec-complete OAuth 2.1
+remains the gate before any public third-party exposure (ADR 0003).
+
 ## Using the Deployed Buddy from Other Projects (MCP Bridge)
 
 Any project can talk to a deployed Buddy through the thin stdio bridge
