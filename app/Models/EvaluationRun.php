@@ -14,6 +14,7 @@ class EvaluationRun extends Model
         'candidate_metrics',
         'passed',
         'completed_at',
+        'langsmith_experiment_id',
     ];
 
     protected function casts(): array

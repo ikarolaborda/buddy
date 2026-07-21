@@ -12,6 +12,7 @@ class EvaluationSuite extends Model
         'kind',
         'cases',
         'frozen',
+        'langsmith_dataset_id',
     ];
 
     protected function casts(): array

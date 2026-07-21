@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\BuddyRun;
+use App\Models\EvaluationRun;
+use App\Models\EvaluationSuite;
 use App\Models\ImprovementCandidate;
 use App\Models\PromotionDecision;
 use App\Models\TaskFeedback;
@@ -34,6 +36,23 @@ class CilReportCommand extends Command
             ['Human promotion decisions', PromotionDecision::count()],
             ['Evidence threshold', $minEvidence],
         ]);
+
+        $syncedSuites = EvaluationSuite::whereNotNull('langsmith_dataset_id')->get();
+
+        if ($syncedSuites->isNotEmpty()) {
+            $this->newLine();
+            $this->info('LangSmith projections');
+            $this->table(
+                ['Suite', 'Dataset ID', 'Experiments'],
+                $syncedSuites->map(fn ($suite) => [
+                    $suite->name,
+                    $suite->langsmith_dataset_id,
+                    EvaluationRun::where('evaluation_suite_id', $suite->id)
+                        ->whereNotNull('langsmith_experiment_id')
+                        ->count(),
+                ])->all(),
+            );
+        }
 
         if ($totalRuns < $minEvidence) {
             $this->line("Below evidence threshold ({$totalRuns}/{$minEvidence}); no improvement cycle is warranted yet.");
