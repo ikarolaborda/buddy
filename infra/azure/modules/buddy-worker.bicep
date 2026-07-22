@@ -63,6 +63,11 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/langsmith-api-key'
           identity: identity.id
         }
+        {
+          name: 'openrouter-api-key'
+          keyVaultUrl: '${keyVaultUri}secrets/openrouter-api-key'
+          identity: identity.id
+        }
       ]
     }
     template: {
@@ -122,10 +127,13 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'LANGSMITH_ENDPOINT', value: 'https://api.smith.langchain.com' }
             { name: 'LANGSMITH_PROJECT', value: 'buddy-${environment}' }
             { name: 'LANGSMITH_TRACING', value: 'true' }
-            { name: 'REDIS_QUEUE_RETRY_AFTER', value: '240' }
+            // Must exceed the council job timeout (900s) or Redis redelivers
+            // a live council mid-deliberation (ADR 0009 timing chain).
+            { name: 'REDIS_QUEUE_RETRY_AFTER', value: '1200' }
+            { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
             { name: 'BUDDY_MEMORY_BACKEND', value: 'hub' }
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
-                      ]
+          ]
         }
       ]
     }
