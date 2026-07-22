@@ -36,6 +36,9 @@ Route::prefix('buddy')->group(function () {
     Route::post('tasks/{task}/refine', [BuddyTaskController::class, 'refine'])
         ->middleware('auth.buddy:tasks:write')
         ->name('buddy.tasks.refine');
+    Route::post('tasks/{task}/council', [BuddyTaskController::class, 'council'])
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.council');
     Route::post('tasks/{task}/close', [BuddyTaskController::class, 'close'])
         ->middleware('auth.buddy:tasks:write')
         ->name('buddy.tasks.close');

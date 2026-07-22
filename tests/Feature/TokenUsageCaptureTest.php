@@ -21,21 +21,24 @@ class TokenUsageCaptureTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function fakeEvaluation(): void
+    /*
+     * A second fake() call replaces the queued responses instead of
+     * appending, so multi-call tests must queue everything at once or
+     * the overflow falls through to randomly generated schema output.
+     */
+    protected function fakeEvaluation(int $responses = 1): void
     {
-        EvaluatorOptimizerAgent::fake([
-            [
-                'accepted' => true,
-                'confidence' => 'high',
-                'summary' => 'ok',
-                'recommended_plan' => [],
-                'rejected_reasons' => [],
-                'required_followups' => [],
-                'risks' => [],
-                'next_actions' => [],
-                'memory_hits' => [],
-            ],
-        ]);
+        EvaluatorOptimizerAgent::fake(array_fill(0, $responses, [
+            'accepted' => true,
+            'confidence' => 'high',
+            'summary' => 'ok',
+            'recommended_plan' => [],
+            'rejected_reasons' => [],
+            'required_followups' => [],
+            'risks' => [],
+            'next_actions' => [],
+            'memory_hits' => [],
+        ]));
     }
 
     public function test_evaluation_stores_token_usage_on_the_run(): void
@@ -102,8 +105,7 @@ class TokenUsageCaptureTest extends TestCase
 
     public function test_model_candidate_replays_both_pinned_legs(): void
     {
-        $this->fakeEvaluation();
-        $this->fakeEvaluation();
+        $this->fakeEvaluation(2);
 
         $suite = EvaluationSuite::create([
             'name' => 'model-ab',

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\TaskStatus;
 use App\Models\BuddyTask;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class TaskStateService
@@ -40,6 +41,35 @@ class TaskStateService
         }
 
         return false;
+    }
+
+    /*
+     * Reaps tasks stuck in Evaluating whose lease expired long ago: a
+     * worker died mid-run (SIGKILL, crash) and nothing else ever scans
+     * lease_expires_at. Grace of one lease period beyond expiry avoids
+     * racing a live worker whose heartbeat is merely late.
+     */
+    public function reapExpiredLeases(): int
+    {
+        $reaped = 0;
+
+        $stuck = BuddyTask::query()
+            ->where('status', TaskStatus::Evaluating->value)
+            ->whereNotNull('claimed_by')
+            ->where('lease_expires_at', '<', now()->subSeconds((int) config('buddy.timeouts.lease', 300)))
+            ->limit(20)
+            ->get();
+
+        foreach ($stuck as $task) {
+            try {
+                $this->transition($task, TaskStatus::Failed);
+                $reaped++;
+            } catch (\Throwable $e) {
+                Log::info('Lease reap skipped (state moved)', ['task_ulid' => $task->ulid]);
+            }
+        }
+
+        return $reaped;
     }
 
     public function heartbeat(BuddyTask $task, string $owner, ?int $leaseSeconds = null): bool

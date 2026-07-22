@@ -12,6 +12,7 @@ use App\DTOs\MemoryQuery;
 use App\DTOs\MemorySearchPage;
 use App\DTOs\ProblemPacket;
 use App\DTOs\RefinementResult;
+use App\Enums\ArtifactType;
 use App\Enums\RunStatus;
 use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
@@ -21,6 +22,7 @@ use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Models\PromptVersion;
 use App\Models\TaskFeedback;
+use App\Services\Council\CouncilService;
 use App\Services\Observability\LangSmithTracer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -103,6 +105,35 @@ class EvaluatorOptimizerService
         });
     }
 
+    public function council(BuddyTask $task, ?string $claimOwner = null): array
+    {
+        return $this->executeRun($task, 'council', function (BuddyTask $task, BuddyRun $run, MemorySearchPage $memoryPage) use ($claimOwner) {
+            $result = app(CouncilService::class)->deliberate($task, $memoryPage, $claimOwner);
+
+            $task->artifacts()->create([
+                'type' => ArtifactType::CouncilTranscript,
+                'content' => (string) json_encode($result['transcript']),
+                'metadata' => ['run_id' => $run->id],
+            ]);
+
+            $verdict = $result['verdict'];
+
+            $projection = EvaluationResult::fromArray([
+                'accepted' => (bool) $verdict['accepted'],
+                'confidence' => in_array($verdict['confidence'], ['high', 'medium', 'low', 'none'], true) ? $verdict['confidence'] : 'low',
+                'summary' => $verdict['summary'],
+                'recommended_plan' => $verdict['recommended_plan'],
+                'rejected_reasons' => $verdict['defeated'],
+                'required_followups' => $verdict['proposed_discriminators'],
+                'risks' => $verdict['risks'],
+                'next_actions' => $verdict['recommended_plan'],
+                'memory_hits' => [],
+            ]);
+
+            return [$verdict, $projection, null, $result['usage'], $verdict];
+        });
+    }
+
     public function closeTask(
         BuddyTask $task,
         ?string $learningsSummary = null,
@@ -156,10 +187,10 @@ class EvaluatorOptimizerService
             $memoryPage = $this->searchMemory($task);
             $this->storeMemoryReferences($task, $memoryPage);
 
-            [$domainResult, $evaluation, $refinementPayload, $tokenUsage] = array_pad($callback($task, $run), 4, null);
+            [$domainResult, $evaluation, $refinementPayload, $tokenUsage, $councilPayload] = array_pad($callback($task, $run, $memoryPage), 5, null);
 
-            DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload, $tokenUsage) {
-                $this->storeRecommendation($run, $evaluation, $refinementPayload);
+            DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload, $tokenUsage, $councilPayload) {
+                $this->storeRecommendation($run, $evaluation, $refinementPayload, $councilPayload);
                 $this->logDecision($task, $run, $evaluation, $memoryPage);
 
                 $run->update([
@@ -282,7 +313,7 @@ class EvaluatorOptimizerService
         }
     }
 
-    protected function storeRecommendation(BuddyRun $run, EvaluationResult $result, ?array $refinementPayload): BuddyRecommendation
+    protected function storeRecommendation(BuddyRun $run, EvaluationResult $result, ?array $refinementPayload, ?array $councilPayload = null): BuddyRecommendation
     {
         return BuddyRecommendation::create([
             'buddy_run_id' => $run->id,
@@ -296,6 +327,7 @@ class EvaluatorOptimizerService
             'next_actions' => $result->nextActions,
             'memory_hits' => $result->memoryHits,
             'refinement' => $refinementPayload,
+            'council' => $councilPayload,
         ]);
     }
 

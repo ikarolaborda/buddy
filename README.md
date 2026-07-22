@@ -297,7 +297,7 @@ claude mcp add --transport http buddy https://<your-buddy-host>/api/mcp \
   --header "Authorization: Bearer bdy_live_..."
 ```
 
-Same six tools, same per-client isolation, same scopes as the REST API. The
+Same seven tools, same per-client isolation, same scopes as the REST API. The
 server is stateless (no SSE stream; GET returns 405 as the spec permits).
 Static bearer auth is intended for your own agents; spec-complete OAuth 2.1
 remains the gate before any public third-party exposure (ADR 0003).

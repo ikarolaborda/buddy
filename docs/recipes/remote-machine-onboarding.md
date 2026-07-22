@@ -32,11 +32,11 @@ curl -s -m 20 -X POST "$BUDDY_URL" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Expected: a JSON-RPC result listing **6 tools** (`buddy.submit_problem`,
+Expected: a JSON-RPC result listing **7 tools** (`buddy.submit_problem`,
 `buddy.get_task_status`, `buddy.evaluate_task`, `buddy.refine_prompt`,
-`buddy.attach_artifact`, `buddy.close_task`). If the live tool list differs
-from this document, trust the live endpoint and flag the doc as drifted in
-your report.
+`buddy.attach_artifact`, `buddy.close_task`, `buddy.council_evaluate`). If
+the live tool list differs from this document, trust the live endpoint and
+flag the doc as drifted in your report.
 
 Also confirm auth is actually enforced: the same call **without** the
 Authorization header must return 401.
@@ -72,7 +72,7 @@ unrelated `mcpServers` entries.
 ## Step 3 — Validate from the agent side
 
 After a session restart (MCP config loads at startup), confirm the `buddy`
-server connects and the six tools are callable — `claude mcp list` or a
+server connects and the seven tools are callable — `claude mcp list` or a
 `buddy.get_task_status` call with a bogus ULID (a clean "Task not found"
 proves auth + routing end to end). If the server connects and then silently
 drops, check the per-project MCP logs under

@@ -202,6 +202,40 @@ class BuddyTaskController extends Controller
         }
     }
 
+    public function council(Request $request, BuddyTask $task): JsonResponse
+    {
+        $this->authorizeClientAccess($request, $task);
+
+        if (! config('buddy_agents.council.enabled')) {
+            return response()->json(['error' => 'Council is disabled.'], 422);
+        }
+
+        if ($task->isTerminal()) {
+            return response()->json([
+                'error' => 'Task is terminal; submit a new task for council deliberation.',
+            ], 422);
+        }
+
+        // Council is never inline: 12 large-model calls would hold an
+        // Octane worker for minutes (ADR 0008/0009).
+        DB::transaction(function () use ($task) {
+            $task->operation = 'council';
+            $task->save();
+
+            if ($task->status === TaskStatus::Pending) {
+                $this->state->transition($task, TaskStatus::Evaluating);
+            }
+
+            $this->outbox->appendTaskSubmitted($task);
+        });
+
+        return response()->json([
+            'task_id' => $task->ulid,
+            'status' => 'deliberating',
+            'message' => 'Council convened. Poll GET /api/buddy/tasks/{id}; expect 2-10 minutes.',
+        ], 202);
+    }
+
     public function refine(Request $request, BuddyTask $task): JsonResponse
     {
         $this->authorizeClientAccess($request, $task);

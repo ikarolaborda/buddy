@@ -72,6 +72,17 @@ class RemoteToolDefinitions
                 ],
             ],
             [
+                'name' => 'buddy.council_evaluate',
+                'description' => 'Convene the LLM council (5 models, falsification-first deliberation) on a task. Slow (2-10 minutes) and costly; reserve for high-stakes problems. Supply rich evidence: members may only defeat hypotheses by citing your evidence items. Poll buddy.get_task_status; an underdetermined verdict with discriminating checks is a normal, honest outcome.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => $taskId,
+                    ],
+                    'required' => ['task_id'],
+                ],
+            ],
+            [
                 'name' => 'buddy.close_task',
                 'description' => 'Close a task, optionally recording the outcome (fed back into recommendation quality tracking) and a learnings summary stored into Buddy memory.',
                 'inputSchema' => [

@@ -11,5 +11,6 @@ enum ArtifactType: string
     case Diff = 'diff';
     case Config = 'config';
     case Screenshot = 'screenshot';
+    case CouncilTranscript = 'council_transcript';
     case Other = 'other';
 }

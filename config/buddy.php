@@ -106,6 +106,8 @@ return [
         'worker' => (int) env('BUDDY_WORKER_TIMEOUT', 210),
         'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 240),
         'lease' => (int) env('BUDDY_TASK_LEASE_SECONDS', 300),
+        'council_job' => (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 900),
+        'council_lease' => (int) env('BUDDY_COUNCIL_LEASE_SECONDS', 1200),
     ],
 
     /*

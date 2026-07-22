@@ -88,6 +88,7 @@ class RemoteMcpHandler
                 'buddy.submit_problem' => $this->submitProblem($id, $args, $client),
                 'buddy.get_task_status' => $this->getTaskStatus($id, $args, $client, $key),
                 'buddy.evaluate_task' => $this->evaluateTask($id, $args, $client, $key),
+                'buddy.council_evaluate' => $this->councilEvaluate($id, $args, $client, $key),
                 'buddy.refine_prompt' => $this->refinePrompt($id, $args, $client, $key),
                 'buddy.attach_artifact' => $this->attachArtifact($id, $args, $client, $key),
                 'buddy.close_task' => $this->closeTask($id, $args, $client, $key),
@@ -250,6 +251,47 @@ class RemoteMcpHandler
      * @param  array<string, mixed>  $args
      * @return array<string, mixed>
      */
+    /**
+     * One council = one task: an already-evaluated (terminal) task
+     * cannot be re-deliberated; submit a fresh task with the evidence.
+     *
+     * @param  array<string, mixed>  $args
+     * @return array<string, mixed>
+     */
+    protected function councilEvaluate(mixed $id, array $args, ApiClient $client, ApiKey $key): array
+    {
+        if (! config('buddy_agents.council.enabled')) {
+            return $this->toolError($id, 'Council is disabled.');
+        }
+
+        $task = $this->ownedTask($args, $client, $key);
+
+        if ($task === null) {
+            return $this->toolError($id, 'Task not found.');
+        }
+
+        if ($task->isTerminal()) {
+            return $this->toolError($id, 'Task is terminal; submit a new task for council deliberation.');
+        }
+
+        DB::transaction(function () use ($task) {
+            $task->operation = 'council';
+            $task->save();
+
+            if ($task->status === TaskStatus::Pending) {
+                $this->state->transition($task, TaskStatus::Evaluating);
+            }
+
+            $this->outbox->appendTaskSubmitted($task);
+        });
+
+        return $this->toolResult($id, [
+            'task_id' => $task->ulid,
+            'status' => 'deliberating',
+            'message' => 'Council convened (5 models, falsification rounds). Expect 2-10 minutes; poll buddy.get_task_status.',
+        ]);
+    }
+
     protected function closeTask(mixed $id, array $args, ApiClient $client, ApiKey $key): array
     {
         $task = $this->ownedTask($args, $client, $key);

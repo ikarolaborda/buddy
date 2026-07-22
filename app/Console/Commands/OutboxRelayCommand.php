@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\OutboxMessage;
 use App\Services\OutboxPublisher;
+use App\Services\TaskStateService;
 use Illuminate\Console\Command;
 
 class OutboxRelayCommand extends Command
@@ -15,8 +16,16 @@ class OutboxRelayCommand extends Command
 
     protected $description = 'Republish unprocessed outbox messages to the queue';
 
-    public function handle(OutboxPublisher $publisher): int
+    public function handle(OutboxPublisher $publisher, TaskStateService $state): int
     {
+        // The relay is the only scheduled process, so lease reaping
+        // piggybacks here (runs every 5 minutes in Azure).
+        $reaped = $state->reapExpiredLeases();
+
+        if ($reaped > 0) {
+            $this->warn("Reaped {$reaped} task(s) with expired leases.");
+        }
+
         do {
             $published = $this->processBatch($publisher);
 

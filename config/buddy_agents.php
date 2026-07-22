@@ -34,6 +34,38 @@ return [
         'fast_problem_types' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_FAST_PROBLEM_TYPES', 'configuration,other')))),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | LLM Council
+    |--------------------------------------------------------------------------
+    |
+    | Falsification-first multi-model deliberation (plan
+    | 2026-07-22-llm-council, ADR 0009). Explicit invocation only; a
+    | council is never auto-routed. Defeats require evidence references
+    | that resolve to real packet items; packet evidence is testimony,
+    | so `underdetermined` with a discriminator list is the expected
+    | modal outcome, not a failure. Chairman narrates; PHP computes the
+    | ranking. Cost cap counts council runs per UTC day across clients.
+    |
+    */
+
+    'council' => [
+        'enabled' => (bool) env('BUDDY_COUNCIL', true),
+        'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
+        'max_per_day' => (int) env('BUDDY_COUNCIL_MAX_PER_DAY', 10),
+        'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 300),
+        'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 8000),
+        'min_positions' => 3,
+        'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+        'members' => [
+            ['key' => 'gpt', 'model' => 'openai/gpt-5.6-sol', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+            ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+            ['key' => 'opus', 'model' => 'anthropic/claude-opus-4.8', 'family' => 'anthropic'],
+            ['key' => 'sonnet', 'model' => 'anthropic/claude-sonnet-5', 'family' => 'anthropic'],
+            ['key' => 'gemini', 'model' => 'google/gemini-3.1-pro-preview', 'family' => 'google'],
+        ],
+    ],
+
     'profiles' => [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'openai'),

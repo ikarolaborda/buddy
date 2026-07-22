@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\CouncilDeliberateJob;
 use App\Jobs\EvaluateTaskJob;
 use App\Models\BuddyTask;
 use App\Models\OutboxMessage;
@@ -85,6 +86,9 @@ class OutboxPublisher
             return;
         }
 
-        EvaluateTaskJob::dispatch($task);
+        match ($message->payload['operation'] ?? 'evaluate') {
+            'council' => CouncilDeliberateJob::dispatch($task),
+            default => EvaluateTaskJob::dispatch($task),
+        };
     }
 }
