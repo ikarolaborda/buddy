@@ -59,24 +59,21 @@ Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints
 - MCP server as Artisan command implementing JSON-RPC 2.0 stdio transport
 - Secrets stay in `.env`, never in Claude config — mount `.env` as Docker volume
 
-## Docker MCP Configuration
+## MCP Configuration
 
-When configuring Buddy as an MCP server in Claude Code settings:
+Agents consume the deployed Buddy over native Streamable HTTP MCP with a bearer
+key (ADR 0006). Follow `docs/recipes/remote-machine-onboarding.md`; the short
+form:
 
-```json
-"buddy": {
-  "command": "docker",
-  "args": [
-    "run", "--rm", "-i",
-    "--network", "qdrant-memory_default",
-    "-e", "QDRANT_HOST=http://qdrant-memory-db",
-    "-v", "/path/to/buddy/.env:/var/www/html/.env",
-    "-v", "/path/to/buddy/database:/var/www/html/database",
-    "buddy-app",
-    "php", "artisan", "buddy:mcp-server"
-  ]
-}
+```bash
+claude mcp add --scope user --transport http buddy "$BUDDY_URL" \
+  --header "Authorization: Bearer $BUDDY_API_KEY"
 ```
+
+The legacy local Docker stdio invocation (mounting `.env` and the SQLite
+database into a `buddy-app` container) is retired; do not re-add it. The stdio
+fallback for environments without HTTP MCP support is `bin/buddy-mcp-bridge`
+with `BUDDY_BASE_URL` and `BUDDY_API_KEY` (ADR 0003).
 
 ## Commenting Rules
 

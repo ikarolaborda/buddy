@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.45.15.27210",
-      "templateHash": "11990934179158034868"
+      "version": "0.44.1.10279",
+      "templateHash": "16193803720107399972"
     }
   },
   "parameters": {
@@ -79,6 +79,20 @@
       "metadata": {
         "description": "PostgreSQL administrator password; store it in Key Vault after deployment"
       }
+    },
+    "alertEmailAddress": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Operator email for alerts and budget notifications; empty disables the alerts module"
+      }
+    },
+    "monthlyBudgetAmount": {
+      "type": "int",
+      "defaultValue": 100,
+      "metadata": {
+        "description": "Monthly resource-group budget in subscription currency"
+      }
     }
   },
   "variables": {
@@ -109,8 +123,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "9913249437132486076"
+              "version": "0.44.1.10279",
+              "templateHash": "1047680551077673139"
             }
           },
           "parameters": {
@@ -238,8 +252,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "4456552031843697533"
+              "version": "0.44.1.10279",
+              "templateHash": "10183795166202367106"
             }
           },
           "parameters": {
@@ -314,8 +328,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "7241296722098040336"
+              "version": "0.44.1.10279",
+              "templateHash": "817533747510283035"
             }
           },
           "parameters": {
@@ -376,8 +390,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "16211719943699998595"
+              "version": "0.44.1.10279",
+              "templateHash": "12475439884807569371"
             }
           },
           "parameters": {
@@ -456,8 +470,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "4833902803565574570"
+              "version": "0.44.1.10279",
+              "templateHash": "15637563997583605086"
             }
           },
           "parameters": {
@@ -555,8 +569,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "9611575087162622304"
+              "version": "0.44.1.10279",
+              "templateHash": "14478412382780669933"
             }
           },
           "parameters": {
@@ -666,8 +680,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "12216241920051632077"
+              "version": "0.44.1.10279",
+              "templateHash": "14856284260422953238"
             }
           },
           "parameters": {
@@ -800,8 +814,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "9282274632808770884"
+              "version": "0.44.1.10279",
+              "templateHash": "10985042407099570779"
             }
           },
           "parameters": {
@@ -942,8 +956,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "11712959781400672820"
+              "version": "0.44.1.10279",
+              "templateHash": "13573499879132759766"
             }
           },
           "parameters": {
@@ -1204,8 +1218,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "15211100634936165962"
+              "version": "0.44.1.10279",
+              "templateHash": "2502726512181208878"
             }
           },
           "parameters": {
@@ -1307,7 +1321,7 @@
                 },
                 "template": {
                   "scale": {
-                    "minReplicas": "[if(equals(parameters('environment'), 'prod'), 1, 0)]",
+                    "minReplicas": 1,
                     "maxReplicas": 5,
                     "rules": [
                       {
@@ -1523,8 +1537,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "7615599581464058100"
+              "version": "0.44.1.10279",
+              "templateHash": "8596577213795662467"
             }
           },
           "parameters": {
@@ -1835,8 +1849,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.45.15.27210",
-              "templateHash": "15699760878212175553"
+              "version": "0.44.1.10279",
+              "templateHash": "9403682524847000541"
             }
           },
           "parameters": {
@@ -2109,6 +2123,213 @@
         "[resourceId('Microsoft.Resources/deployments', 'postgres')]",
         "[resourceId('Microsoft.Resources/deployments', 'redis')]"
       ]
+    },
+    {
+      "condition": "[not(equals(parameters('alertEmailAddress'), ''))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "alerts",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "alertEmailAddress": {
+            "value": "[parameters('alertEmailAddress')]"
+          },
+          "monthlyBudgetAmount": {
+            "value": "[parameters('monthlyBudgetAmount')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.44.1.10279",
+              "templateHash": "4233524549138266219"
+            }
+          },
+          "parameters": {
+            "environment": {
+              "type": "string"
+            },
+            "alertEmailAddress": {
+              "type": "string"
+            },
+            "monthlyBudgetAmount": {
+              "type": "int",
+              "defaultValue": 100
+            },
+            "budgetStartDate": {
+              "type": "string",
+              "defaultValue": "[utcNow('yyyy-MM-01')]"
+            }
+          },
+          "variables": {
+            "apiAppName": "[format('ca-buddy-api-{0}', parameters('environment'))]",
+            "monitoredApps": [
+              "[variables('apiAppName')]",
+              "[format('ca-buddy-worker-{0}', parameters('environment'))]",
+              "[format('ca-memory-hub-{0}', parameters('environment'))]"
+            ]
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/actionGroups",
+              "apiVersion": "2021-09-01",
+              "name": "[format('ag-buddy-{0}', parameters('environment'))]",
+              "location": "Global",
+              "properties": {
+                "groupShortName": "[format('buddy-{0}', parameters('environment'))]",
+                "enabled": true,
+                "emailReceivers": [
+                  {
+                    "name": "operator",
+                    "emailAddress": "[parameters('alertEmailAddress')]",
+                    "useCommonAlertSchema": true
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-{0}-5xx', variables('apiAppName'))]",
+              "location": "global",
+              "properties": {
+                "description": "Buddy API is returning server errors",
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[resourceId('Microsoft.App/containerApps', variables('apiAppName'))]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT15M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "criterionType": "StaticThresholdCriterion",
+                      "name": "server-errors",
+                      "metricName": "Requests",
+                      "dimensions": [
+                        {
+                          "name": "statusCodeCategory",
+                          "operator": "Include",
+                          "values": [
+                            "5xx"
+                          ]
+                        }
+                      ],
+                      "operator": "GreaterThan",
+                      "threshold": 10,
+                      "timeAggregation": "Total"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-buddy-{0}', parameters('environment')))]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-buddy-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "copy": {
+                "name": "replicaRestarts",
+                "count": "[length(variables('monitoredApps'))]"
+              },
+              "type": "Microsoft.Insights/metricAlerts",
+              "apiVersion": "2018-03-01",
+              "name": "[format('alert-{0}-restarts', variables('monitoredApps')[copyIndex()])]",
+              "location": "global",
+              "properties": {
+                "description": "Container app replicas are restarting",
+                "severity": 2,
+                "enabled": true,
+                "scopes": [
+                  "[resourceId('Microsoft.App/containerApps', variables('monitoredApps')[copyIndex()])]"
+                ],
+                "evaluationFrequency": "PT5M",
+                "windowSize": "PT30M",
+                "criteria": {
+                  "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+                  "allOf": [
+                    {
+                      "criterionType": "StaticThresholdCriterion",
+                      "name": "restarts",
+                      "metricName": "RestartCount",
+                      "dimensions": [],
+                      "operator": "GreaterThan",
+                      "threshold": 3,
+                      "timeAggregation": "Maximum"
+                    }
+                  ]
+                },
+                "actions": [
+                  {
+                    "actionGroupId": "[resourceId('Microsoft.Insights/actionGroups', format('ag-buddy-{0}', parameters('environment')))]"
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Insights/actionGroups', format('ag-buddy-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Consumption/budgets",
+              "apiVersion": "2025-04-01",
+              "name": "[format('budget-buddy-{0}', parameters('environment'))]",
+              "properties": {
+                "timeGrain": "Monthly",
+                "timePeriod": {
+                  "startDate": "[parameters('budgetStartDate')]"
+                },
+                "category": "Cost",
+                "amount": "[parameters('monthlyBudgetAmount')]",
+                "notifications": {
+                  "actual80": {
+                    "enabled": true,
+                    "operator": "GreaterThan",
+                    "threshold": 80,
+                    "thresholdType": "Actual",
+                    "contactEmails": [
+                      "[parameters('alertEmailAddress')]"
+                    ]
+                  },
+                  "actual100": {
+                    "enabled": true,
+                    "operator": "GreaterThan",
+                    "threshold": 100,
+                    "thresholdType": "Actual",
+                    "contactEmails": [
+                      "[parameters('alertEmailAddress')]"
+                    ]
+                  },
+                  "forecast100": {
+                    "enabled": true,
+                    "operator": "GreaterThan",
+                    "threshold": 100,
+                    "thresholdType": "Forecasted",
+                    "contactEmails": [
+                      "[parameters('alertEmailAddress')]"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "outputs": {

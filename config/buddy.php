@@ -36,6 +36,14 @@ return [
     'api' => [
         'auth_required' => (bool) env('BUDDY_API_AUTH', true),
         'key_pepper' => env('BUDDY_API_KEY_PEPPER', ''),
+
+        /*
+         * Origins allowed to call /api/mcp from a browser context.
+         * First-party agents send no Origin header and are unaffected.
+         * Browser-based tools (MCP Inspector: http://localhost:6274)
+         * must be listed here explicitly, localhost included. ADR 0006.
+         */
+        'allowed_origins' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_MCP_ALLOWED_ORIGINS', '')))),
     ],
 
     /*

@@ -1,6 +1,8 @@
 # ADR 0003: API-key REST first; MCP stays local via a thin stdio bridge
 
-**Status:** Accepted — 2026-07-21
+**Status:** Accepted — 2026-07-21. Amended by ADR 0006 (2026-07-22): native Streamable
+HTTP MCP with static bearer keys is accepted for first-party agents; the OAuth 2.1
+gate now applies to third-party/public exposure only.
 
 ## Decision
 

@@ -40,6 +40,12 @@ param hubSigningKeySecretUri string = ''
 @description('PostgreSQL administrator password; store it in Key Vault after deployment')
 param postgresAdminPassword string
 
+@description('Operator email for alerts and budget notifications; empty disables the alerts module')
+param alertEmailAddress string = ''
+
+@description('Monthly resource-group budget in subscription currency')
+param monthlyBudgetAmount int = 100
+
 module network 'modules/network.bicep' = {
   name: 'network'
   params: {
@@ -184,6 +190,15 @@ module jobs 'modules/jobs.bicep' = if (deployWorkloads) {
     redisHostName: redisHost
     redisPort: redisPort
     redisUseTls: redisTls
+  }
+}
+
+module alerts 'modules/alerts.bicep' = if (alertEmailAddress != '') {
+  name: 'alerts'
+  params: {
+    environment: environment
+    alertEmailAddress: alertEmailAddress
+    monthlyBudgetAmount: monthlyBudgetAmount
   }
 }
 

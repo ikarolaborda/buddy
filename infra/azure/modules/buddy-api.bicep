@@ -1,5 +1,7 @@
 // Stateless Buddy API app: enqueue-only for long evaluations, scales on
-// HTTP concurrency, min 1 replica in production.
+// HTTP concurrency. Min 1 replica in every environment: dev is the
+// serving tier (ADR 0007) and scale-to-zero cold starts caused MCP
+// timeouts for the agents it serves.
 
 param environment string
 param location string
@@ -71,7 +73,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
     }
     template: {
       scale: {
-        minReplicas: environment == 'prod' ? 1 : 0
+        minReplicas: 1
         maxReplicas: 5
         rules: [
           {

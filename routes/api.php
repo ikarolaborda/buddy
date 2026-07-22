@@ -10,9 +10,11 @@ Route::get('health', [HealthController::class, 'health'])->name('health');
 Route::get('ready', [HealthController::class, 'ready'])->name('ready');
 
 Route::post('mcp', [McpController::class, 'post'])
-    ->middleware('auth.buddy')
+    ->middleware(['mcp.origin', 'auth.buddy'])
     ->name('mcp.post');
-Route::get('mcp', [McpController::class, 'get'])->name('mcp.get');
+Route::get('mcp', [McpController::class, 'get'])
+    ->middleware('mcp.origin')
+    ->name('mcp.get');
 
 Route::post('admin/clients', [ApiClientController::class, 'store'])
     ->middleware('auth.buddy:admin')
