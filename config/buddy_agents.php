@@ -14,6 +14,26 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Problem-Type Model Routing
+    |--------------------------------------------------------------------------
+    |
+    | Low-stakes problem types route the evaluator to a faster model.
+    | Applies ONLY to the evaluator-optimizer agent and ONLY when no
+    | active agent_profiles row overrides that agent: a DB override is
+    | the ops escape hatch and always wins verbatim. The fast model was
+    | verified against the live OpenAI model list on 2026-07-22.
+    | Effective model is recorded on every run. ADR 0008.
+    |
+    */
+
+    'routing' => [
+        'enabled' => (bool) env('BUDDY_MODEL_ROUTING', true),
+        'fast_model' => env('BUDDY_FAST_MODEL', 'gpt-5.4-mini'),
+        'fast_problem_types' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_FAST_PROBLEM_TYPES', 'configuration,other')))),
+    ],
+
     'profiles' => [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'openai'),

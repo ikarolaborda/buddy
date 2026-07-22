@@ -1,0 +1,47 @@
+# Octane/FrankenPHP production image (ADR 0008). Same build discipline as
+# the fpm Dockerfile: clean worktree, immutable SHA tag, dependencies and
+# autoloader compiled in, no startup composer. Config/route caches are
+# built at container start (env is only known then), before workers boot.
+# The fpm image stays the rollback path and the worker-container image
+# during the bake period.
+
+FROM composer:2.8 AS vendor
+
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --no-progress \
+    --no-scripts \
+    --prefer-dist \
+    --ignore-platform-reqs
+
+FROM dunglas/frankenphp:1-php8.5 AS app
+
+RUN install-php-extensions pdo_pgsql redis pcntl opcache
+
+WORKDIR /var/www/html
+
+COPY --from=vendor /app/vendor ./vendor
+COPY . .
+
+COPY --from=vendor /usr/bin/composer /usr/bin/composer
+
+# Same stale-cache rule as the fpm image: a dev machine's packages.php
+# lists dev-only providers absent from the no-dev vendor tree.
+RUN cp docker/production/php.ini "$PHP_INI_DIR/conf.d/99-buddy.ini" \
+    && rm -f bootstrap/cache/*.php \
+    && composer dump-autoload --optimize --classmap-authoritative \
+    && php artisan package:discover --ansi \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod +x docker/production/octane-entrypoint.sh
+
+ENV OCTANE_SERVER=frankenphp
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+    CMD curl -fsS -o /dev/null http://127.0.0.1:8080/api/health || exit 1
+
+CMD ["docker/production/octane-entrypoint.sh"]

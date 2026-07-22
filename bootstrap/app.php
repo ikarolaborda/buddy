@@ -14,6 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Azure Container Apps ingress (Envoy) fronts the app; without
+        // this, Request::ip() is the ingress pod IP and every IP-keyed
+        // throttle shares one bucket. Ingress is the only network path.
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'auth.buddy' => AuthenticateApiKey::class,
             'mcp.origin' => ValidateMcpOrigin::class,

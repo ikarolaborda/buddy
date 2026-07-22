@@ -49,17 +49,26 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
 
     public function provider(): string
     {
-        return app(AgentProfileResolver::class)->resolve(self::AGENT_KEY)['provider'];
+        return $this->profile()['provider'];
     }
 
     public function model(): string
     {
-        return app(AgentProfileResolver::class)->resolve(self::AGENT_KEY)['model'];
+        return $this->profile()['model'];
     }
 
     public function timeout(): int
     {
-        return app(AgentProfileResolver::class)->resolve(self::AGENT_KEY)['timeout'];
+        return $this->profile()['timeout'];
+    }
+
+    /**
+     * @return array{provider: string, model: string, timeout: int, max_steps: int, temperature: float}
+     */
+    protected function profile(): array
+    {
+        return app(AgentProfileResolver::class)
+            ->resolve(self::AGENT_KEY, $this->task->problem_type);
     }
 
     public function tools(): iterable

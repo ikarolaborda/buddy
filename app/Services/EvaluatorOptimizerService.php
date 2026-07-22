@@ -219,7 +219,10 @@ class EvaluatorOptimizerService
      */
     protected function recordRunConfiguration(BuddyRun $run, string $agentKey, string $promptHash, array $moduleIds): void
     {
-        $profile = $this->profiles->resolve($agentKey);
+        // The resolver routes only the evaluator agent, so passing the
+        // problem type is a no-op for the refiner and keeps recorded
+        // model_used identical to the model each agent actually calls.
+        $profile = $this->profiles->resolve($agentKey, $run->task->problem_type);
 
         PromptVersion::firstOrCreate(
             ['agent' => $agentKey, 'content_hash' => $promptHash],

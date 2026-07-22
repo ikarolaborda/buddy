@@ -230,10 +230,10 @@ Artifact types: `log`, `test_output`, `stacktrace`, `code_snippet`, `diff`, `con
 
 ```
 POST /api/buddy/tasks/{ulid}/evaluate
-POST /api/buddy/tasks/{ulid}/evaluate?async=1
+POST /api/buddy/tasks/{ulid}/evaluate?sync=1
 ```
 
-Run the evaluator-optimizer agent on the task. Without `?async=1`, this runs synchronously and returns the recommendation directly. With `?async=1`, the evaluation is dispatched to a queue worker and returns immediately with status `202`.
+Run the evaluator-optimizer agent on the task. By default the evaluation is dispatched to a queue worker and returns immediately with status `202`; poll `GET /api/buddy/tasks/{ulid}` for the recommendation. With `?sync=1` (or when no real queue driver is configured, e.g. local development) it runs inline and returns the recommendation directly. Inline runs hold a server worker for up to the provider timeout, so keep them out of production traffic.
 
 **Synchronous Response (200):**
 ```json

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ApiScope;
 use App\Models\ApiClient;
 use App\Models\ApiKey;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class ApiKeyService
@@ -59,10 +60,7 @@ class ApiKeyService
             return null;
         }
 
-        $key = ApiKey::query()
-            ->with('client')
-            ->where('public_id', $publicId)
-            ->first();
+        $key = $this->lookup($publicId);
 
         if ($key === null) {
             return null;
@@ -76,7 +74,7 @@ class ApiKeyService
             return null;
         }
 
-        $key->forceFill(['last_used_at' => now()])->saveQuietly();
+        $this->touchLastUsed($key, $publicId);
 
         return $key;
     }
@@ -88,6 +86,61 @@ class ApiKeyService
             'event' => 'revoked',
             'context' => $reason !== null ? ['reason' => $reason] : null,
         ]);
+
+        Cache::forget(self::cacheKey($key->public_id));
+    }
+
+    /*
+     * Verified keys are cached for a short TTL so the hot path skips the
+     * key+client queries. Revocation through revoke() invalidates
+     * immediately; a direct-DB revocation or client deactivation lingers
+     * for at most the TTL (accepted, ADR 0008). Expiry never lingers:
+     * isUsable() re-checks expires_at on every request. Unknown public
+     * ids are not cached, so the 401 path always hits the database.
+     */
+    protected function lookup(string $publicId): ?ApiKey
+    {
+        $ttl = $this->cacheTtl();
+
+        $query = fn () => ApiKey::query()
+            ->with('client')
+            ->where('public_id', $publicId)
+            ->first();
+
+        if ($ttl <= 0) {
+            return $query();
+        }
+
+        return Cache::remember(self::cacheKey($publicId), $ttl, $query);
+    }
+
+    /*
+     * last_used_at is write-only telemetry; one UPDATE per key per TTL
+     * window is enough and removes a per-request write from the hot path.
+     */
+    protected function touchLastUsed(ApiKey $key, string $publicId): void
+    {
+        $ttl = max($this->cacheTtl(), 60);
+
+        if ($key->last_used_at !== null && $key->last_used_at->gt(now()->subSeconds($ttl))) {
+            return;
+        }
+
+        $key->forceFill(['last_used_at' => now()])->saveQuietly();
+
+        if ($this->cacheTtl() > 0) {
+            Cache::put(self::cacheKey($publicId), $key, $this->cacheTtl());
+        }
+    }
+
+    protected function cacheTtl(): int
+    {
+        return (int) config('buddy.api.key_cache_ttl', 60);
+    }
+
+    protected static function cacheKey(string $publicId): string
+    {
+        return 'buddy:apikey:'.$publicId;
     }
 
     protected function digest(string $secret): string

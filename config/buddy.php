@@ -38,6 +38,12 @@ return [
         'key_pepper' => env('BUDDY_API_KEY_PEPPER', ''),
 
         /*
+         * Verified-key cache TTL in seconds; 0 disables. Bounds how long
+         * a direct-DB revocation or client deactivation can linger.
+         */
+        'key_cache_ttl' => (int) env('BUDDY_API_KEY_CACHE_TTL', 60),
+
+        /*
          * Origins allowed to call /api/mcp from a browser context.
          * First-party agents send no Origin header and are unaffected.
          * Browser-based tools (MCP Inspector: http://localhost:6274)

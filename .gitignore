@@ -24,3 +24,7 @@ Homestead.yaml
 Thumbs.db
 /.agent
 /database/database.sqlite
+
+**/caddy
+frankenphp
+frankenphp-worker.php

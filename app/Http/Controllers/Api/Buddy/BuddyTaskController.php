@@ -155,13 +155,14 @@ class BuddyTaskController extends Controller
             ], 422);
         }
 
-        if ($request->boolean('async')) {
-            if (config('queue.default') === 'sync') {
-                return response()->json([
-                    'error' => 'Async evaluation requires a non-sync queue driver.',
-                ], 422);
-            }
+        // Async is the default (plan §8.1: enqueue only, 202). Inline
+        // evaluation blocks a server worker for up to the provider
+        // timeout, which starves the fixed Octane worker pool (ADR
+        // 0008); it remains available behind ?sync=1 and is the
+        // automatic fallback when no real queue driver exists.
+        $wantsSync = $request->boolean('sync') || config('queue.default') === 'sync';
 
+        if (! $wantsSync) {
             DB::transaction(function () use ($task) {
                 if ($task->status === TaskStatus::Pending) {
                     $this->state->transition($task, TaskStatus::Evaluating);
