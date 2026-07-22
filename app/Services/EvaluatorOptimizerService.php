@@ -13,12 +13,14 @@ use App\DTOs\MemorySearchPage;
 use App\DTOs\ProblemPacket;
 use App\DTOs\RefinementResult;
 use App\Enums\RunStatus;
+use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Models\BuddyDecisionLog;
 use App\Models\BuddyRecommendation;
 use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Models\PromptVersion;
+use App\Models\TaskFeedback;
 use App\Services\Observability\LangSmithTracer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -69,7 +71,7 @@ class EvaluatorOptimizerService
                 'memory_hits' => $response['memory_hits'] ?? [],
             ]);
 
-            return [$result, $result, null];
+            return [$result, $result, null, $response->usage->toArray()];
         });
     }
 
@@ -97,25 +99,46 @@ class EvaluatorOptimizerService
                 'memory_hits' => $response['memory_hits'] ?? [],
             ]);
 
-            return [$result, $this->refinementToEvaluation($result), $result->toArray()];
+            return [$result, $this->refinementToEvaluation($result), $result->toArray(), $response->usage->toArray()];
         });
     }
 
-    public function closeTask(BuddyTask $task, ?string $learningsSummary = null): void
-    {
-        DB::transaction(function () use ($task) {
+    public function closeTask(
+        BuddyTask $task,
+        ?string $learningsSummary = null,
+        ?TaskOutcome $outcome = null,
+        ?string $notes = null,
+    ): void {
+        // Feedback rides the transition transaction so a racing double
+        // close (loser throws on the atomic CAS) cannot double-insert.
+        DB::transaction(function () use ($task, $outcome, $notes) {
             $this->state->transition($task, TaskStatus::Closed);
+
+            if ($outcome !== null) {
+                TaskFeedback::create([
+                    'buddy_task_id' => $task->id,
+                    'outcome' => $outcome->value,
+                    'score' => $outcome->score(),
+                    'comment' => $notes,
+                    'source' => 'agent_close',
+                ]);
+            }
         });
 
         if ($learningsSummary) {
             $this->storeLearnings($task, $learningsSummary);
+        }
+
+        if ($outcome !== null) {
+            $this->tracer->sendTaskOutcomeFeedback($task, $outcome->value, $outcome->score(), $notes);
         }
     }
 
     /**
      * The agent/network call runs outside any database transaction; only
      * result persistence is transactional. Callback returns
-     * [domain result, evaluation projection, refinement payload|null].
+     * [domain result, evaluation projection, refinement payload|null,
+     * token usage|null].
      */
     protected function executeRun(BuddyTask $task, string $runType, callable $callback): mixed
     {
@@ -133,14 +156,15 @@ class EvaluatorOptimizerService
             $memoryPage = $this->searchMemory($task);
             $this->storeMemoryReferences($task, $memoryPage);
 
-            [$domainResult, $evaluation, $refinementPayload] = $callback($task, $run);
+            [$domainResult, $evaluation, $refinementPayload, $tokenUsage] = array_pad($callback($task, $run), 4, null);
 
-            DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload) {
+            DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload, $tokenUsage) {
                 $this->storeRecommendation($run, $evaluation, $refinementPayload);
                 $this->logDecision($task, $run, $evaluation, $memoryPage);
 
                 $run->update([
                     'status' => RunStatus::Completed,
+                    'token_usage' => $tokenUsage,
                     'completed_at' => now(),
                 ]);
 

@@ -3,6 +3,7 @@
 namespace App\Services\Cil;
 
 use App\Ai\Agents\EvaluatorOptimizerAgent;
+use App\Ai\Prompting\AgentProfileResolver;
 use App\Ai\Prompting\PromptCompiler;
 use App\Enums\ProblemType;
 use App\Models\BuddyTask;
@@ -26,18 +27,39 @@ class CilReplayService
     public function __construct(
         protected PromptCompiler $compiler,
         protected LangSmithEvaluationService $langsmith,
+        protected AgentProfileResolver $profiles,
     ) {}
 
     public function replay(ImprovementCandidate $candidate, EvaluationSuite $suite): EvaluationRun
     {
-        if ($candidate->kind !== 'prompt') {
-            throw new RuntimeException("Only prompt candidates can be replayed; got '{$candidate->kind}'.");
+        if (! in_array($candidate->kind, ['prompt', 'model'], true)) {
+            throw new RuntimeException("Only prompt or model candidates can be replayed; got '{$candidate->kind}'.");
         }
 
-        $overrides = $candidate->payload['modules'] ?? [];
+        $overrides = [];
+        $baselineModel = null;
+        $candidateModel = null;
 
-        if ($overrides === []) {
-            throw new RuntimeException('Candidate payload has no module overrides.');
+        if ($candidate->kind === 'prompt') {
+            $overrides = $candidate->payload['modules'] ?? [];
+
+            if ($overrides === []) {
+                throw new RuntimeException('Candidate payload has no module overrides.');
+            }
+        }
+
+        if ($candidate->kind === 'model') {
+            $candidateModel = (string) ($candidate->payload['model'] ?? '');
+
+            if ($candidateModel === '') {
+                throw new RuntimeException('Model candidate payload has no model.');
+            }
+
+            // Both legs must be pinned or problem-type routing decides the
+            // model per case and contaminates the A/B. Baseline resolves
+            // with a null problem type: routing off, DB override honored.
+            $baselineModel = $this->profiles
+                ->resolve(EvaluatorOptimizerAgent::AGENT_KEY, null)['model'];
         }
 
         $budget = count($suite->cases) * 2;
@@ -63,8 +85,8 @@ class CilReplayService
 
         $experimentRuns = [];
 
-        $baseline = $this->replayVariant($suite, [], 'baseline', $experimentId, $exampleIds, $experimentRuns);
-        $candidateMetrics = $this->replayVariant($suite, $overrides, 'candidate', $experimentId, $exampleIds, $experimentRuns);
+        $baseline = $this->replayVariant($suite, [], 'baseline', $experimentId, $exampleIds, $experimentRuns, $baselineModel);
+        $candidateMetrics = $this->replayVariant($suite, $overrides, 'candidate', $experimentId, $exampleIds, $experimentRuns, $candidateModel);
 
         $this->langsmith->postExperimentRuns($experimentRuns);
         $this->langsmith->endExperiment($run->refresh());
@@ -92,6 +114,7 @@ class CilReplayService
         ?string $experimentId,
         array $exampleIds,
         array &$experimentRuns,
+        ?string $model = null,
     ): array {
         $cases = [];
         $correct = 0;
@@ -101,7 +124,7 @@ class CilReplayService
             $expected = $case['expected']['accepted'] ?? null;
 
             try {
-                $response = $this->evaluateCase($case['inputs'] ?? $case, $overrides);
+                $response = $this->evaluateCase($case['inputs'] ?? $case, $overrides, $model);
                 $accepted = (bool) $response['accepted'];
                 $matches = $expected === null || $accepted === $expected;
 
@@ -164,7 +187,7 @@ class CilReplayService
      * @param  array<string, string>  $overrides
      * @return array<string, mixed>
      */
-    protected function evaluateCase(array $inputs, array $overrides): array
+    protected function evaluateCase(array $inputs, array $overrides, ?string $model = null): array
     {
         $task = new BuddyTask;
         $task->ulid = 'replay-'.Str::lower(Str::random(12));
@@ -183,7 +206,7 @@ class CilReplayService
             );
         }
 
-        $response = $agent->prompt($agent->buildPrompt());
+        $response = $agent->prompt($agent->buildPrompt(), model: $model);
 
         return [
             'accepted' => $response['accepted'],

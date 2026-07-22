@@ -2,6 +2,7 @@
 
 namespace App\Mcp\Tools;
 
+use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Mcp\BaseMcpTool;
 use App\Models\BuddyTask;
@@ -26,6 +27,8 @@ class CloseTaskMcpTool extends BaseMcpTool
             'properties' => [
                 'task_id' => ['type' => 'string', 'description' => 'The ULID of the task.'],
                 'learnings_summary' => ['type' => 'string', 'description' => 'Optional summary of learnings to store in memory.'],
+                'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How useful the recommendation turned out to be.'],
+                'notes' => ['type' => 'string', 'description' => 'Optional context about the outcome.'],
             ],
             'required' => ['task_id'],
         ];
@@ -45,7 +48,12 @@ class CloseTaskMcpTool extends BaseMcpTool
 
         /** @var EvaluatorOptimizerService $evaluator */
         $evaluator = app(EvaluatorOptimizerService::class);
-        $evaluator->closeTask($task, $arguments['learnings_summary'] ?? null);
+        $evaluator->closeTask(
+            $task,
+            $arguments['learnings_summary'] ?? null,
+            TaskOutcome::tryFrom((string) ($arguments['outcome'] ?? '')),
+            isset($arguments['notes']) ? (string) $arguments['notes'] : null,
+        );
 
         return $this->textResponse(json_encode([
             'closed' => true,

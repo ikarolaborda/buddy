@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Buddy;
 
 use App\DTOs\ProblemPacket;
 use App\Enums\ApiScope;
+use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Buddy\AttachArtifactRequest;
@@ -246,6 +247,8 @@ class BuddyTaskController extends Controller
         $this->evaluator->closeTask(
             $task,
             $request->input('learnings_summary'),
+            TaskOutcome::tryFrom((string) $request->input('outcome', '')),
+            $request->input('notes'),
         );
 
         return response()->json([

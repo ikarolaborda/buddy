@@ -73,12 +73,14 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.close_task',
-                'description' => 'Close a task, optionally storing a learnings summary into Buddy memory.',
+                'description' => 'Close a task, optionally recording the outcome (fed back into recommendation quality tracking) and a learnings summary stored into Buddy memory.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
                         'task_id' => $taskId,
                         'learnings_summary' => ['type' => 'string'],
+                        'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How useful the recommendation turned out to be.'],
+                        'notes' => ['type' => 'string', 'description' => 'Optional context about the outcome.'],
                     ],
                     'required' => ['task_id'],
                 ],

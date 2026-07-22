@@ -4,6 +4,7 @@ namespace App\Mcp;
 
 use App\DTOs\ProblemPacket;
 use App\Enums\ApiScope;
+use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Models\ApiClient;
 use App\Models\ApiKey;
@@ -261,7 +262,16 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task is already in a terminal state.');
         }
 
-        $this->evaluator->closeTask($task, $args['learnings_summary'] ?? null);
+        // inputSchema enums are advisory; unknown outcomes degrade to null
+        // rather than failing the close.
+        $outcome = TaskOutcome::tryFrom((string) ($args['outcome'] ?? ''));
+
+        $this->evaluator->closeTask(
+            $task,
+            $args['learnings_summary'] ?? null,
+            $outcome,
+            isset($args['notes']) ? (string) $args['notes'] : null,
+        );
 
         return $this->toolResult($id, ['task_id' => $task->ulid, 'status' => 'closed']);
     }

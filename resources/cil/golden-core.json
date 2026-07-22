@@ -1,0 +1,87 @@
+{
+  "name": "buddy-suite-golden-core",
+  "kind": "golden",
+  "frozen": false,
+  "cases": [
+    {
+      "inputs": {
+        "task_summary": "Our Laravel API intermittently returns 500s under load. We found queue jobs are configured with retry_after=60 while the job timeout is 180 seconds. Proposal: keep both values and add more workers to absorb the duplicate deliveries.",
+        "problem_type": "bug",
+        "constraints": ["cannot change queue backend"],
+        "evidence": ["duplicate job executions observed in logs", "retry_after=60, job timeout=180"],
+        "requested_outcome": "assess the proposed fix"
+      },
+      "expected": {"accepted": false}
+    },
+    {
+      "inputs": {
+        "task_summary": "Test suite fails only in CI: a test asserts an exact created_at timestamp equals now(). Proposal: freeze time with the framework's time-travel helper in the test setup.",
+        "problem_type": "test_failure",
+        "constraints": [],
+        "evidence": ["assertion compares Carbon::now() to a stored timestamp", "passes locally, fails on slower CI runners"],
+        "requested_outcome": "assess the proposed fix"
+      },
+      "expected": {"accepted": true}
+    },
+    {
+      "inputs": {
+        "task_summary": "A dashboard page makes one database query per row to fetch each item's owner name, 500 rows per page. Proposal: eager-load the owner relation in the controller query.",
+        "problem_type": "performance",
+        "constraints": ["no schema changes"],
+        "evidence": ["query log shows 501 queries per page load"],
+        "requested_outcome": "assess the proposed fix"
+      },
+      "expected": {"accepted": true}
+    },
+    {
+      "inputs": {
+        "task_summary": "To speed up deployments, proposal: run database migrations automatically inside every web container's entrypoint at boot, so all 6 replicas run migrate on startup.",
+        "problem_type": "architecture",
+        "constraints": ["zero-downtime deployments required"],
+        "evidence": ["6 replicas start concurrently on each deploy"],
+        "requested_outcome": "assess the proposed approach"
+      },
+      "expected": {"accepted": false}
+    },
+    {
+      "inputs": {
+        "task_summary": "A webhook consumer processes payment events. Proposal: verify the webhook signature with the shared secret before acting, and reject requests older than 5 minutes using the signed timestamp.",
+        "problem_type": "security",
+        "constraints": [],
+        "evidence": ["current handler trusts the payload without verification"],
+        "requested_outcome": "assess the proposed approach"
+      },
+      "expected": {"accepted": true}
+    },
+    {
+      "inputs": {
+        "task_summary": "App boots fine locally but crashes in production with class-not-found for a dev-only package. Proposal: composer require the dev package into production dependencies so the class always exists.",
+        "problem_type": "configuration",
+        "constraints": ["keep production image minimal"],
+        "evidence": ["package is in require-dev", "production build runs composer install --no-dev"],
+        "requested_outcome": "assess the proposed fix"
+      },
+      "expected": {"accepted": false}
+    },
+    {
+      "inputs": {
+        "task_summary": "Third-party REST API sometimes returns 429 with a Retry-After header. Proposal: honor Retry-After with bounded exponential backoff and cap total retries at 3, failing the job afterwards for the failed-jobs table.",
+        "problem_type": "integration",
+        "constraints": ["provider rate limits are contractual"],
+        "evidence": ["429 responses include Retry-After seconds"],
+        "requested_outcome": "assess the proposed approach"
+      },
+      "expected": {"accepted": true}
+    },
+    {
+      "inputs": {
+        "task_summary": "A nightly job deletes soft-deleted records older than 30 days. Proposal: switch the delete to a single unbatched DELETE covering millions of rows during peak evening traffic to simplify the code.",
+        "problem_type": "performance",
+        "constraints": ["database is shared with the live API"],
+        "evidence": ["table holds ~40M rows, ~2M eligible per run"],
+        "requested_outcome": "assess the proposed change"
+      },
+      "expected": {"accepted": false}
+    }
+  ]
+}

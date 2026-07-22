@@ -9,6 +9,7 @@ use App\Models\BuddyTask;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Ramsey\Uuid\Uuid;
 
 /*
  * Ships one completed run tree per evaluation to LangSmith's batch ingest
@@ -38,14 +39,54 @@ class LangSmithTracer
         }
 
         try {
-            $this->post($this->buildRunTree($task, $run, $memoryPage, $result, $error));
+            [$payload, $rootId] = $this->buildRunTree($task, $run, $memoryPage, $result, $error);
+
+            $this->post('/runs/batch', $payload);
+
+            // The root run id is the feedback anchor: close-time outcome
+            // feedback binds to it (ADR: LangSmith improvements).
+            $run->forceFill(['langsmith_run_id' => $rootId])->saveQuietly();
         } catch (\Throwable $e) {
             Log::warning('LangSmith trace dropped', ['error' => $e->getMessage()]);
         }
     }
 
+    /*
+     * Posts the task close outcome as feedback on the latest traced run,
+     * regardless of run type (refinement-only tasks bind to refinement
+     * traces). Deterministic feedback id makes racing closes idempotent
+     * on the LangSmith side. Fire-and-forget like tracing.
+     */
+    public function sendTaskOutcomeFeedback(BuddyTask $task, string $outcome, ?int $score, ?string $notes): void
+    {
+        if (! $this->enabled()) {
+            return;
+        }
+
+        try {
+            $run = $task->runs()
+                ->whereNotNull('langsmith_run_id')
+                ->orderByDesc('run_number')
+                ->first();
+
+            if ($run === null) {
+                return;
+            }
+
+            $this->post('/feedback', array_filter([
+                'id' => Uuid::uuid5(Uuid::NAMESPACE_DNS, 'buddy:'.$task->ulid.':task_outcome')->toString(),
+                'run_id' => $run->langsmith_run_id,
+                'key' => 'task_outcome',
+                'score' => $score !== null ? $score / 100 : null,
+                'comment' => trim('outcome: '.$outcome.($notes !== null ? ' | '.$notes : '')),
+            ], fn ($v) => $v !== null));
+        } catch (\Throwable $e) {
+            Log::warning('LangSmith feedback dropped', ['error' => $e->getMessage()]);
+        }
+    }
+
     /**
-     * @return array{post: array<int, array<string, mixed>>}
+     * @return array{0: array{post: array<int, array<string, mixed>>}, 1: string}
      */
     protected function buildRunTree(
         BuddyTask $task,
@@ -136,16 +177,49 @@ class LangSmithTracer
             start: $retrieverStart->addSecond(),
             end: $end,
             inputs: ['prompt_hash' => $run->prompt_hash],
-            outputs: [
-                'token_usage' => $run->token_usage,
+            outputs: array_filter([
+                'usage_metadata' => $this->usageMetadata($run->token_usage),
                 'error_class' => $run->error_class,
-            ],
+            ], fn ($v) => $v !== null),
             error: $error?->getMessage(),
             tags: array_filter([(string) $run->provider]),
             parentRunId: $rootId,
+            metadata: array_filter([
+                'ls_provider' => $run->provider,
+                'ls_model_name' => $run->model_used,
+            ]),
         );
 
-        return ['post' => [$root, $retriever, $llm]];
+        return [['post' => [$root, $retriever, $llm]], $rootId];
+    }
+
+    /**
+     * Maps laravel/ai usage keys onto LangSmith's usage_metadata contract
+     * so token counts light up cost tracking.
+     *
+     * @param  array<string, int>|null  $tokenUsage
+     * @return array<string, mixed>|null
+     */
+    protected function usageMetadata(?array $tokenUsage): ?array
+    {
+        if ($tokenUsage === null || $tokenUsage === []) {
+            return null;
+        }
+
+        $input = (int) ($tokenUsage['prompt_tokens'] ?? 0);
+        $output = (int) ($tokenUsage['completion_tokens'] ?? 0);
+
+        return array_filter([
+            'input_tokens' => $input,
+            'output_tokens' => $output,
+            'total_tokens' => $input + $output,
+            'input_token_details' => array_filter([
+                'cache_read' => (int) ($tokenUsage['cache_read_input_tokens'] ?? 0),
+            ]),
+            'output_token_details' => array_filter([
+                'reasoning' => (int) ($tokenUsage['reasoning_tokens'] ?? 0),
+            ]),
+        ], fn ($v) => $v !== [] || ! is_array($v));
     }
 
     /**
@@ -167,6 +241,7 @@ class LangSmithTracer
         ?string $error,
         array $tags,
         ?string $parentRunId = null,
+        array $metadata = [],
     ): array {
         return array_filter([
             'id' => $id,
@@ -182,7 +257,7 @@ class LangSmithTracer
             'error' => $error,
             'session_name' => (string) config('buddy.langsmith.project'),
             'tags' => $tags,
-            'extra' => ['metadata' => ['service' => 'buddy']],
+            'extra' => ['metadata' => array_merge(['service' => 'buddy'], $metadata)],
         ], fn ($v) => $v !== null);
     }
 
@@ -192,15 +267,15 @@ class LangSmithTracer
     }
 
     /**
-     * @param  array{post: array<int, array<string, mixed>>}  $payload
+     * @param  array<string, mixed>  $payload
      */
-    protected function post(array $payload): void
+    protected function post(string $path, array $payload): void
     {
         Http::baseUrl((string) config('buddy.langsmith.endpoint'))
             ->withHeaders(['x-api-key' => (string) config('buddy.langsmith.api_key')])
             ->timeout((int) config('buddy.langsmith.timeout', 2))
             ->connectTimeout(2)
             ->asJson()
-            ->post('/runs/batch', $payload);
+            ->post($path, $payload);
     }
 }

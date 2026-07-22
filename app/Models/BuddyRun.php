@@ -18,6 +18,7 @@ class BuddyRun extends Model
         'provider',
         'prompt_hash',
         'prompt_modules',
+        'langsmith_run_id',
         'error_class',
         'token_usage',
         'cost',
