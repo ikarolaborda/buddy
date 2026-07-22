@@ -3,6 +3,27 @@
 **Status:** Complete (L1 + L2 shipped and live-verified; L3 intentionally not started per §2)
 **Date:** 2026-07-22
 
+Utilization upgrade (commit 50cbd1c, live-verified on revision ls1): (1) task closes
+accept an outcome (`resolved|partially_resolved|not_useful|abandoned`) plus notes on all
+four close surfaces; outcomes persist to `task_feedback` and post as deterministic
+LangSmith feedback bound to the trace via `buddy_runs.langsmith_run_id` (verified live:
+`task_outcome` score 1.0 with comment on the closing task's trace; abandoned sends
+comment-only so unrelated drops never poison the metric). (2) Provider token usage now
+persists on runs and ships as `usage_metadata` with `ls_provider`/`ls_model_name`;
+LangSmith computes cost (verified live: 3,748 tokens, $0.0165 on the first traced run).
+(3) `LANGSMITH_SEND_PROMPTS=true` in dev on both apps: traces carry task summaries and
+evaluation summaries (first-party data, operator-approved egress). (4) CIL replay accepts
+model-kind candidates with both legs explicitly pinned (baseline resolves with a null
+problem type: routing off, DB override honored); `buddy:cil-import-suite` imports
+checked-in suites; `resources/cil/golden-core.json` ships 8 golden cases. First
+mini-vs-full replay: gpt-5.4 8/8, gpt-5.4-mini 7/8 (confidently accepted a flawed
+retry_after proposal on a queueing case; that case class routes to the full model in
+production). Binary accept/reject grading over 8 agent-authored cases is a smoke-level
+comparison, not a quality verdict; growing suites from real outcome-labeled tasks (now
+collected via item 1) is the credible path. Operational note: image rollouts do not run
+migrations; `az containerapp exec ... php artisan migrate --force` is the manual step
+until the migration job's image tag is wired into deploys.
+
 Delivery notes: L1 tracing live since `78a5cb9` (deployed trace `73c53778`). L2 datasets
 live since `4c8e270` (dataset `601f88a6`); replay engine + human promotion gate close the
 loop — first real replay caught a genuine regression (stricter-evidence candidate dropped

@@ -42,12 +42,19 @@ class LangSmithTracer
             [$payload, $rootId] = $this->buildRunTree($task, $run, $memoryPage, $result, $error);
 
             $this->post('/runs/batch', $payload);
-
-            // The root run id is the feedback anchor: close-time outcome
-            // feedback binds to it (ADR: LangSmith improvements).
-            $run->forceFill(['langsmith_run_id' => $rootId])->saveQuietly();
         } catch (\Throwable $e) {
             Log::warning('LangSmith trace dropped', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        try {
+            // The root run id is the feedback anchor: close-time outcome
+            // feedback binds to it. A persist failure loses only the
+            // feedback binding; the trace itself already landed.
+            $run->forceFill(['langsmith_run_id' => $rootId])->saveQuietly();
+        } catch (\Throwable $e) {
+            Log::warning('LangSmith run id not persisted', ['error' => $e->getMessage()]);
         }
     }
 
