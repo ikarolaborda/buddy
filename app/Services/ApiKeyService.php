@@ -102,16 +102,61 @@ class ApiKeyService
     {
         $ttl = $this->cacheTtl();
 
-        $query = fn () => ApiKey::query()
+        if ($ttl <= 0) {
+            return $this->queryKey($publicId);
+        }
+
+        $cached = Cache::get(self::cacheKey($publicId));
+
+        if (is_array($cached)) {
+            return $this->hydrate($cached);
+        }
+
+        $key = $this->queryKey($publicId);
+
+        if ($key !== null) {
+            Cache::put(self::cacheKey($publicId), $this->dehydrate($key), $ttl);
+        }
+
+        return $key;
+    }
+
+    protected function queryKey(string $publicId): ?ApiKey
+    {
+        return ApiKey::query()
             ->with('client')
             ->where('public_id', $publicId)
             ->first();
+    }
 
-        if ($ttl <= 0) {
-            return $query();
-        }
+    /*
+     * Cache stores unserialize with an allowed_classes restriction, so
+     * Eloquent models come back as __PHP_Incomplete_Class. Plain
+     * attribute arrays survive every store; models are rebuilt on read.
+     *
+     * @return array{key: array<string, mixed>, client: array<string, mixed>|null}
+     */
+    protected function dehydrate(ApiKey $key): array
+    {
+        return [
+            'key' => $key->getAttributes(),
+            'client' => $key->client?->getAttributes(),
+        ];
+    }
 
-        return Cache::remember(self::cacheKey($publicId), $ttl, $query);
+    /**
+     * @param  array{key: array<string, mixed>, client: array<string, mixed>|null}  $cached
+     */
+    protected function hydrate(array $cached): ApiKey
+    {
+        $key = (new ApiKey)->newFromBuilder($cached['key']);
+
+        $key->setRelation(
+            'client',
+            $cached['client'] !== null ? (new ApiClient)->newFromBuilder($cached['client']) : null,
+        );
+
+        return $key;
     }
 
     /*
@@ -129,7 +174,7 @@ class ApiKeyService
         $key->forceFill(['last_used_at' => now()])->saveQuietly();
 
         if ($this->cacheTtl() > 0) {
-            Cache::put(self::cacheKey($publicId), $key, $this->cacheTtl());
+            Cache::put(self::cacheKey($publicId), $this->dehydrate($key), $this->cacheTtl());
         }
     }
 

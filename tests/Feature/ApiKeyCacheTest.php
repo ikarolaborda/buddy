@@ -108,6 +108,28 @@ class ApiKeyCacheTest extends TestCase
         $this->assertSame(1, $updates->count());
     }
 
+    /*
+     * The array store never serializes, so only a store that round-trips
+     * through serialize() proves the cache payload survives Laravel's
+     * allowed_classes unserialize restriction (RedisStore.php:534).
+     */
+    public function test_cached_key_survives_a_serializing_cache_store(): void
+    {
+        config(['cache.default' => 'file']);
+        cache()->store('file')->clear();
+
+        $first = $this->service->verify($this->plaintext);
+        $this->assertNotNull($first);
+
+        $second = $this->service->verify($this->plaintext);
+
+        $this->assertNotNull($second);
+        $this->assertTrue($second->isUsable());
+        $this->assertSame($first->public_id, $second->public_id);
+        $this->assertIsArray($second->scopes);
+        $this->assertNotNull($second->client);
+    }
+
     public function test_wrong_secret_is_rejected_even_when_key_is_cached(): void
     {
         $this->assertNotNull($this->service->verify($this->plaintext));
