@@ -82,6 +82,26 @@ on its per-revision FQDN with zero traffic before receiving 100%. The fpm
 revision stays provisioned for instant rollback
 (`az containerapp ingress traffic set`).
 
-## Live post-deployment verification
+## Live post-deployment verification (2026-07-22, revision octane2)
 
-Appended after rollout (see ADR 0008 for the summary table).
+- Zero-traffic canary (revision octane1) caught a real defect: cached Eloquent
+  models 500 on every cache hit because Laravel 13 cache stores unserialize
+  with `allowed_classes` (`RedisStore.php:534`). The array store used in tests
+  never serializes, so 136 green tests missed it. Fixed in c6ad9c0 (attribute
+  arrays + `newFromBuilder`), regression-tested against the file store, which
+  reproduced the exact production signature pre-fix.
+- Canary octane2 probed at zero traffic: 40/40 authed calls returned 200 with
+  the 6-tool payload; unauth 401 and cross-origin 403 preserved.
+- Post-cutover main endpoint (statuses asserted): authed `tools/list` p50
+  65ms / p95 70ms (baseline 135-145ms; server-side ~90ms to ~17ms); health p50
+  51ms against a ~48ms network floor.
+- Model routing verified from run provenance inside the container:
+  `configuration` evaluations record and call `gpt-5.4-mini` (runs 17, 18),
+  `bug`/`performance` keep `gpt-5.4` (runs 16, 19). End-to-end eval time was
+  14s on both tiers in a single timed pair, so no latency win is claimed for
+  routing; the win is cost and the ops lever.
+- Stability: replica memory flat at ~190MB of 1Gi with 6 workers, zero
+  restarts over the observation window; `max-requests=250` recycles workers
+  and the RestartCount alert (ADR 0007) watches ongoing.
+- Rollback path live: fpm revision 0000011 remains provisioned; the worker
+  runs the fpm image `buddy:c6ad9c0`-lineage.
