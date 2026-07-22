@@ -76,8 +76,12 @@ variable Horizon-less Redis queues actually honor is `REDIS_QUEUE_RETRY_AFTER`
 
 ## Cost controls
 
-Explicit invocation only; `Tries(1)` (a failed council is reported, not
-retried); `BUDDY_COUNCIL_MAX_PER_DAY` (default 10) across all clients;
+Explicit invocation only; `CouncilGate` (task distress markers — 2+ attempts,
+failed run, rejected evaluation — or declared `criticality: critical` with an
+audited >= 30-char reason; one council per task; `council_eligible` surfaced on
+task status; `BUDDY_COUNCIL_GATE` kill switch); `Tries(1)` (a failed council
+is reported, not retried); `BUDDY_COUNCIL_MAX_PER_DAY` (default 10) across all
+clients;
 round-checkpoint artifacts preserve partial transcripts on crash so spend is
 never fully lost; `max_output_tokens` 8000 per call.
 

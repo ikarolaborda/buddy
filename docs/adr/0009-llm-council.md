@@ -59,6 +59,19 @@ heartbeats, per-round transcript artifacts as crash checkpoints, a per-UTC-day
 run cap, and a lease reaper piggybacked on the outbox relay. `OPENROUTER_API_KEY`
 lives in Key Vault (prod) or the untracked `.env` (dev) — never in the repo.
 
+## Amendment (2026-07-22): criticality gate
+
+Live measurement confirmed ~5 minutes per deliberation is inherent (four
+sequential rounds of frontier models at high reasoning effort; parallelism is
+already applied within rounds), so invocation is now mechanically gated by
+`CouncilGate`: a council is allowed only when the task carries objective
+distress markers (`attempt_count >= 2`, a failed run, or a rejected
+evaluation) or the caller declares `criticality: critical` with a substantive
+audited reason (>= 30 chars) for first-touch critical subjects. One council
+per task. `buddy.get_task_status` exposes `council_eligible` so agents learn
+when escalation is warranted; the cheap `buddy.evaluate_task` remains the
+default path. Kill switch `BUDDY_COUNCIL_GATE=false`.
+
 ## Consequences
 
 - One council ≈ 12 large-model calls, 2–10 minutes, dollars not cents; the

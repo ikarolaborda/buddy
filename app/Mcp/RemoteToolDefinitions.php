@@ -73,11 +73,20 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.council_evaluate',
-                'description' => 'Convene the LLM council (5 models, falsification-first deliberation) on a task. Slow (2-10 minutes) and costly; reserve for high-stakes problems. Supply rich evidence: members may only defeat hypotheses by citing your evidence items. Poll buddy.get_task_status; an underdetermined verdict with discriminating checks is a normal, honest outcome.',
+                'description' => 'Convene the LLM council (5 models, falsification-first deliberation) on a task. Slow (2-10 minutes) and costly, so it is GATED: allowed only after the task has a failed or rejected evaluation (check council_eligible on buddy.get_task_status), or with criticality="critical" plus a substantive reason for subjects that cannot be missed (security, irreversible changes, repeatedly bad implementations). Prefer buddy.evaluate_task first. Supply rich evidence: members may only defeat hypotheses by citing your evidence items. An underdetermined verdict with discriminating checks is a normal, honest outcome.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
                         'task_id' => $taskId,
+                        'criticality' => [
+                            'type' => 'string',
+                            'enum' => ['critical'],
+                            'description' => 'Declare only when the subject is genuinely critical and has not yet earned escalation through a failed or rejected evaluation.',
+                        ],
+                        'reason' => [
+                            'type' => 'string',
+                            'description' => 'Why this subject is critical or cannot be missed (min 30 chars). Recorded for audit.',
+                        ],
                     ],
                     'required' => ['task_id'],
                 ],

@@ -14,6 +14,7 @@ use App\Http\Resources\Buddy\BuddyTaskResource;
 use App\Models\ApiClient;
 use App\Models\BuddyTask;
 use App\Models\IdempotencyRecord;
+use App\Services\Council\CouncilGate;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\IdempotencyService;
 use App\Services\OutboxPublisher;
@@ -215,6 +216,23 @@ class BuddyTaskController extends Controller
                 'error' => 'Task is terminal; submit a new task for council deliberation.',
             ], 422);
         }
+
+        $gate = app(CouncilGate::class)->evaluate(
+            $task,
+            $request->input('criticality'),
+            $request->input('reason'),
+        );
+
+        if (! $gate['allowed']) {
+            return response()->json(['error' => $gate['message']], 422);
+        }
+
+        Log::info('Council gate passed', [
+            'task_ulid' => $task->ulid,
+            'basis' => $gate['basis'],
+            'markers' => $gate['markers'],
+            'reason' => $request->input('reason'),
+        ]);
 
         // Council is never inline: 12 large-model calls would hold an
         // Octane worker for minutes (ADR 0008/0009).

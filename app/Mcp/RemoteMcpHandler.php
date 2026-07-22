@@ -9,10 +9,12 @@ use App\Enums\TaskStatus;
 use App\Models\ApiClient;
 use App\Models\ApiKey;
 use App\Models\BuddyTask;
+use App\Services\Council\CouncilGate;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\OutboxPublisher;
 use App\Services\TaskStateService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -160,6 +162,8 @@ class RemoteMcpHandler
                 'next_actions' => $recommendation->next_actions,
                 'memory_hits' => $recommendation->memory_hits,
             ],
+            'council_eligible' => app(CouncilGate::class)
+                ->evaluate($task, null, null)['allowed'],
         ]);
     }
 
@@ -273,6 +277,23 @@ class RemoteMcpHandler
         if ($task->isTerminal()) {
             return $this->toolError($id, 'Task is terminal; submit a new task for council deliberation.');
         }
+
+        $gate = app(CouncilGate::class)->evaluate(
+            $task,
+            isset($args['criticality']) ? (string) $args['criticality'] : null,
+            isset($args['reason']) ? (string) $args['reason'] : null,
+        );
+
+        if (! $gate['allowed']) {
+            return $this->toolError($id, $gate['message']);
+        }
+
+        Log::info('Council gate passed', [
+            'task_ulid' => $task->ulid,
+            'basis' => $gate['basis'],
+            'markers' => $gate['markers'],
+            'reason' => isset($args['reason']) ? (string) $args['reason'] : null,
+        ]);
 
         DB::transaction(function () use ($task) {
             $task->operation = 'council';

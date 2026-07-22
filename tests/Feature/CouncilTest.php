@@ -11,6 +11,7 @@ use App\Models\BuddyRecommendation;
 use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Services\ApiKeyService;
+use App\Services\Council\CouncilGate;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\TaskStateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -164,12 +165,80 @@ class CouncilTest extends TestCase
 
         $this->withToken($key)->postJson('/api/mcp', [
             'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-            'params' => ['name' => 'buddy.council_evaluate', 'arguments' => ['task_id' => $task->ulid]],
+            'params' => ['name' => 'buddy.council_evaluate', 'arguments' => [
+                'task_id' => $task->ulid,
+                'criticality' => 'critical',
+                'reason' => 'irreversible production data migration must not proceed on a wrong assumption',
+            ]],
         ])->assertOk();
 
         $this->assertSame('council', $task->refresh()->operation);
         $this->assertSame(TaskStatus::Evaluating, $task->status);
         $this->assertDatabaseHas('outbox_messages', ['message_key' => $task->ulid.':council']);
+    }
+
+    public function test_gate_denies_fresh_task_without_declared_criticality(): void
+    {
+        $task = $this->makeCouncilTask();
+
+        $gate = app(CouncilGate::class)->evaluate($task, null, null);
+
+        $this->assertFalse($gate['allowed']);
+        $this->assertSame('not_eligible', $gate['basis']);
+    }
+
+    public function test_gate_denies_short_reason_and_allows_substantive_one(): void
+    {
+        $task = $this->makeCouncilTask();
+        $gate = app(CouncilGate::class);
+
+        $this->assertFalse($gate->evaluate($task, 'critical', 'because')['allowed']);
+        $this->assertTrue($gate->evaluate($task, 'critical', str_repeat('security-critical auth boundary decision ', 2))['allowed']);
+    }
+
+    public function test_gate_allows_task_with_distress_markers(): void
+    {
+        $task = $this->makeCouncilTask();
+        $task->attempt_count = 2;
+        $task->save();
+
+        $gate = app(CouncilGate::class)->evaluate($task, null, null);
+
+        $this->assertTrue($gate['allowed']);
+        $this->assertSame('markers', $gate['basis']);
+        $this->assertContains('attempt_count>=2', $gate['markers']);
+    }
+
+    public function test_gate_allows_after_rejected_evaluation_and_blocks_second_council(): void
+    {
+        $task = $this->makeCouncilTask();
+        $run = BuddyRun::create([
+            'buddy_task_id' => $task->id,
+            'run_number' => 1,
+            'run_type' => 'evaluation',
+            'status' => 'completed',
+        ]);
+        BuddyRecommendation::create([
+            'buddy_run_id' => $run->id,
+            'accepted' => false,
+            'confidence' => 'low',
+            'summary' => 'rejected',
+        ]);
+
+        $gate = app(CouncilGate::class);
+
+        $this->assertSame('markers', $gate->evaluate($task, null, null)['basis']);
+
+        BuddyRun::create([
+            'buddy_task_id' => $task->id,
+            'run_number' => 2,
+            'run_type' => 'council',
+            'status' => 'completed',
+        ]);
+
+        $second = $gate->evaluate($task, 'critical', str_repeat('still critical ', 5));
+        $this->assertFalse($second['allowed']);
+        $this->assertSame('council_already_convened', $second['basis']);
     }
 
     public function test_council_job_enforces_daily_cap(): void
