@@ -302,6 +302,11 @@ server is stateless (no SSE stream; GET returns 405 as the spec permits).
 Static bearer auth is intended for your own agents; spec-complete OAuth 2.1
 remains the gate before any public third-party exposure (ADR 0003).
 
+Onboarding a fresh machine? Hand the agent an API key and point it at
+[docs/recipes/remote-machine-onboarding.md](docs/recipes/remote-machine-onboarding.md) —
+it verifies the endpoint, installs the config, sweeps stale local entries,
+and syncs any local agent memories to the cloud on its own.
+
 ## Using the Deployed Buddy from Other Projects (MCP Bridge)
 
 Any project can talk to a deployed Buddy through the thin stdio bridge
