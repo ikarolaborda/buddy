@@ -8,6 +8,7 @@ use App\Ai\Prompting\AgentProfileResolver;
 use App\Contracts\MemoryGateway;
 use App\DTOs\EvaluationResult;
 use App\DTOs\MemoryCandidate;
+use App\DTOs\MemoryFeedback;
 use App\DTOs\MemoryQuery;
 use App\DTOs\MemorySearchPage;
 use App\DTOs\ProblemPacket;
@@ -162,6 +163,38 @@ class EvaluatorOptimizerService
 
         if ($outcome !== null) {
             $this->tracer->sendTaskOutcomeFeedback($task, $outcome->value, $outcome->score(), $notes);
+            $this->sendMemoryOutcomeFeedback($task, $outcome);
+        }
+    }
+
+    /*
+     * Labels the memories that informed this task so hub-side curation can
+     * weight future retrieval. Abandoned says nothing about memory quality
+     * (same reasoning as the null LangSmith score), and hub failures must
+     * never fail a close - feedback is a side channel.
+     */
+    protected function sendMemoryOutcomeFeedback(BuddyTask $task, TaskOutcome $outcome): void
+    {
+        if ($outcome === TaskOutcome::Abandoned) {
+            return;
+        }
+
+        $useful = $outcome !== TaskOutcome::NotUseful;
+
+        foreach ($task->memoryReferences()->pluck('memory_id')->unique() as $memoryId) {
+            try {
+                $this->memory->feedback(new MemoryFeedback(
+                    memoryId: (string) $memoryId,
+                    useful: $useful,
+                    note: "task {$task->ulid} closed {$outcome->value}",
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('Memory outcome feedback failed', [
+                    'task' => $task->ulid,
+                    'memory_id' => $memoryId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
