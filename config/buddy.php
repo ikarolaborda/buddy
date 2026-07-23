@@ -161,6 +161,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Feedback Health Thresholds
+    |--------------------------------------------------------------------------
+    */
+
+    'health' => [
+        'window_days' => (int) env('BUDDY_HEALTH_WINDOW_DAYS', 7),
+        'min_samples' => (int) env('BUDDY_HEALTH_MIN_SAMPLES', 5),
+        'min_mean_score' => (int) env('BUDDY_HEALTH_MIN_MEAN_SCORE', 50),
+        'max_not_useful_rate' => (float) env('BUDDY_HEALTH_MAX_NOT_USEFUL_RATE', 0.3),
+        'max_failed_run_rate' => (float) env('BUDDY_HEALTH_MAX_FAILED_RUN_RATE', 0.2),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Qdrant Configuration (legacy backend)
     |--------------------------------------------------------------------------
     */
