@@ -12,7 +12,7 @@ class CreateApiClientCommand extends Command
     protected $signature = 'buddy:client:create
         {name : Client name}
         {--project=buddy : Project the client belongs to}
-        {--scopes=tasks:read,tasks:write : Comma-separated scopes}
+        {--scopes=tasks:read,tasks:write,memory:write : Comma-separated scopes}
         {--expires-days= : Optional key expiry in days}';
 
     protected $description = 'Create an API client and issue its first API key';

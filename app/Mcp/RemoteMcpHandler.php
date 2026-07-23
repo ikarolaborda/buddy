@@ -329,14 +329,26 @@ class RemoteMcpHandler
         // rather than failing the close.
         $outcome = TaskOutcome::tryFrom((string) ($args['outcome'] ?? ''));
 
+        // Writing to the shared memory corpus needs memory:write; a key
+        // without it still closes the task, it just cannot store learnings.
+        $learnings = $args['learnings_summary'] ?? null;
+        $learningsBlocked = $learnings !== null && ! $key->hasScope(ApiScope::MemoryWrite);
+
         $this->evaluator->closeTask(
             $task,
-            $args['learnings_summary'] ?? null,
+            $learningsBlocked ? null : $learnings,
             $outcome,
             isset($args['notes']) ? (string) $args['notes'] : null,
         );
 
-        return $this->toolResult($id, ['task_id' => $task->ulid, 'status' => 'closed']);
+        $result = ['task_id' => $task->ulid, 'status' => 'closed'];
+
+        if ($learningsBlocked) {
+            $result['learnings_stored'] = false;
+            $result['note'] = 'Learnings not stored: memory:write scope missing.';
+        }
+
+        return $this->toolResult($id, $result);
     }
 
     /**
