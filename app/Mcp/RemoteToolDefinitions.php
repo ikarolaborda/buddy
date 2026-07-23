@@ -93,13 +93,13 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.close_task',
-                'description' => 'Close a task, optionally recording the outcome (fed back into recommendation quality tracking) and a learnings summary stored into Buddy memory.',
+                'description' => 'Close a task. Always pass outcome: it labels the trace corpus that recommendation quality is measured and improved against, so a close without an outcome is a lost signal. Optionally add notes and a learnings summary stored into Buddy memory.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
                         'task_id' => $taskId,
                         'learnings_summary' => ['type' => 'string'],
-                        'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How useful the recommendation turned out to be.'],
+                        'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How the recommendation turned out. Pass this on every close: resolved = it worked, partially_resolved = helped but incomplete, not_useful = wrong or unhelpful, abandoned = dropped for unrelated reasons.'],
                         'notes' => ['type' => 'string', 'description' => 'Optional context about the outcome.'],
                     ],
                     'required' => ['task_id'],

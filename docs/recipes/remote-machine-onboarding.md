@@ -81,6 +81,12 @@ path varies by OS).
 
 Do not proceed to cleanup until this validation passes.
 
+Usage rule to carry into the machine's agent instructions: every
+`buddy.close_task` call must pass `outcome` (`resolved`,
+`partially_resolved`, `not_useful`, or `abandoned`) plus short `notes`.
+Outcomes label the trace corpus that Buddy's recommendation quality is
+measured and improved against; a close without one is a lost signal.
+
 ## Step 4 — Sweep stale local entries (only after Step 3 passes)
 
 Older machines may carry per-project `buddy` entries that spawn a local

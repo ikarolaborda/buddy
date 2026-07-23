@@ -17,7 +17,7 @@ class CloseTaskMcpTool extends BaseMcpTool
 
     public function description(): string
     {
-        return 'Close a Buddy task and optionally store durable learnings from the investigation.';
+        return 'Close a Buddy task. Always pass outcome: it labels the trace corpus that recommendation quality is measured and improved against. Optionally store durable learnings from the investigation.';
     }
 
     public function inputSchema(): array
@@ -27,7 +27,7 @@ class CloseTaskMcpTool extends BaseMcpTool
             'properties' => [
                 'task_id' => ['type' => 'string', 'description' => 'The ULID of the task.'],
                 'learnings_summary' => ['type' => 'string', 'description' => 'Optional summary of learnings to store in memory.'],
-                'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How useful the recommendation turned out to be.'],
+                'outcome' => ['type' => 'string', 'enum' => ['resolved', 'partially_resolved', 'not_useful', 'abandoned'], 'description' => 'How the recommendation turned out. Pass this on every close: resolved = it worked, partially_resolved = helped but incomplete, not_useful = wrong or unhelpful, abandoned = dropped for unrelated reasons.'],
                 'notes' => ['type' => 'string', 'description' => 'Optional context about the outcome.'],
             ],
             'required' => ['task_id'],
