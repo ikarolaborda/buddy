@@ -10,7 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 
-#[Middleware('throttle:10,1')]
+#[Middleware('throttle:buddy-admin')]
 class ApiClientController extends Controller
 {
     public function __construct(
@@ -28,7 +28,7 @@ class ApiClientController extends Controller
 
         $scopes = [];
 
-        foreach ($validated['scopes'] ?? ['tasks:read', 'tasks:write'] as $scope) {
+        foreach ($validated['scopes'] ?? ['tasks:read', 'tasks:write', 'memory:write'] as $scope) {
             $parsed = ApiScope::tryFrom($scope);
 
             if ($parsed === null) {

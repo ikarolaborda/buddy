@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 
-#[Middleware('throttle:120,1')]
+#[Middleware('throttle:mcp')]
 class McpController extends Controller
 {
     public function __construct(

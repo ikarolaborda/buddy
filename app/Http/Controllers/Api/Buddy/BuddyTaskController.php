@@ -26,7 +26,7 @@ use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-#[Middleware('throttle:60,1')]
+#[Middleware('throttle:buddy-api')]
 class BuddyTaskController extends Controller
 {
     public function __construct(
@@ -296,17 +296,33 @@ class BuddyTaskController extends Controller
             ], 422);
         }
 
+        // Writing to the shared memory corpus needs memory:write; a key
+        // without it still closes the task, it just cannot store learnings.
+        // No key means auth is disabled (trusted local mode) - allowed.
+        $key = $request->attributes->get('api_key');
+        $learnings = $request->input('learnings_summary');
+        $learningsBlocked = $learnings !== null
+            && $key !== null
+            && ! $key->hasScope(ApiScope::MemoryWrite);
+
         $this->evaluator->closeTask(
             $task,
-            $request->input('learnings_summary'),
+            $learningsBlocked ? null : $learnings,
             TaskOutcome::tryFrom((string) $request->input('outcome', '')),
             $request->input('notes'),
         );
 
-        return response()->json([
+        $payload = [
             'task_id' => $task->ulid,
             'status' => 'closed',
-        ]);
+        ];
+
+        if ($learningsBlocked) {
+            $payload['learnings_stored'] = false;
+            $payload['note'] = 'Learnings not stored: memory:write scope missing.';
+        }
+
+        return response()->json($payload);
     }
 
     protected function reserveIdempotencyKey(
