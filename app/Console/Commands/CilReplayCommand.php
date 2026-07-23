@@ -44,9 +44,9 @@ class CilReplayCommand extends Command
         $candidate->update(['status' => 'evaluated']);
 
         $this->info("Evaluation run #{$run->id} complete.");
-        $this->table(['Variant', 'Accuracy'], [
-            ['baseline', $run->baseline_metrics['accuracy']],
-            ['candidate', $run->candidate_metrics['accuracy']],
+        $this->table(['Variant', 'Accuracy', 'Graded'], [
+            ['baseline', $run->baseline_metrics['accuracy'], $run->baseline_metrics['graded_score'] ?? 'n/a'],
+            ['candidate', $run->candidate_metrics['accuracy'], $run->candidate_metrics['graded_score'] ?? 'n/a'],
         ]);
         $this->line('Report-only signal (passed): '.($run->passed ? 'yes' : 'no'));
 

@@ -18,11 +18,11 @@ class CilReplayTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function agentResponse(bool $accepted): array
+    protected function agentResponse(bool $accepted, string $confidence = 'high'): array
     {
         return [
             'accepted' => $accepted,
-            'confidence' => 'high',
+            'confidence' => $confidence,
             'summary' => 's',
             'recommended_plan' => [],
             'rejected_reasons' => [],
@@ -113,6 +113,47 @@ class CilReplayTest extends TestCase
                 && str_contains($runs[0]['name'], 'baseline-case-0')
                 && str_contains($runs[3]['name'], 'candidate-case-1');
         });
+    }
+
+    public function test_graded_score_breaks_accuracy_ties(): void
+    {
+        // Both variants answer both cases correctly, but the baseline is
+        // confident and the candidate is not: equal accuracy, lower graded
+        // score, so the candidate must not pass.
+        EvaluatorOptimizerAgent::fake([
+            $this->agentResponse(true, 'high'),
+            $this->agentResponse(false, 'high'),
+            $this->agentResponse(true, 'low'),
+            $this->agentResponse(false, 'low'),
+        ]);
+
+        $run = app(CilReplayService::class)->replay($this->makeCandidate(), $this->makeSuite());
+
+        $this->assertEquals(1.0, $run->baseline_metrics['accuracy']);
+        $this->assertEquals(1.0, $run->candidate_metrics['accuracy']);
+        $this->assertEquals(1.0, $run->baseline_metrics['graded_score']);
+        $this->assertEquals(0.5, $run->candidate_metrics['graded_score']);
+        $this->assertFalse($run->passed);
+    }
+
+    public function test_confidently_wrong_scores_below_hesitantly_wrong(): void
+    {
+        // One-case suite, both variants wrong: high confidence in a wrong
+        // verdict must grade worse than low confidence in the same error.
+        $suite = $this->makeSuite(['cases' => [
+            ['inputs' => ['task_summary' => 'a bug', 'problem_type' => 'bug'], 'expected' => ['accepted' => true]],
+        ]]);
+
+        EvaluatorOptimizerAgent::fake([
+            $this->agentResponse(false, 'high'),
+            $this->agentResponse(false, 'low'),
+        ]);
+
+        $run = app(CilReplayService::class)->replay($this->makeCandidate(), $suite);
+
+        $this->assertEquals(0.0, $run->baseline_metrics['graded_score']);
+        $this->assertEquals(0.5, $run->candidate_metrics['graded_score']);
+        $this->assertTrue($run->passed);
     }
 
     public function test_replay_enforces_the_evaluation_budget(): void

@@ -91,10 +91,16 @@ class CilReplayService
         $this->langsmith->postExperimentRuns($experimentRuns);
         $this->langsmith->endExperiment($run->refresh());
 
+        // Accuracy stays primary; the calibration-aware graded score breaks
+        // ties so equal-accuracy candidates still have to earn the pass.
+        $passed = $candidateMetrics['accuracy'] > $baseline['accuracy']
+            || ($candidateMetrics['accuracy'] === $baseline['accuracy']
+                && $candidateMetrics['graded_score'] >= $baseline['graded_score']);
+
         $run->update([
             'baseline_metrics' => $baseline,
             'candidate_metrics' => $candidateMetrics,
-            'passed' => $candidateMetrics['accuracy'] >= $baseline['accuracy'],
+            'passed' => $passed,
             'completed_at' => now(),
         ]);
 
@@ -118,6 +124,7 @@ class CilReplayService
     ): array {
         $cases = [];
         $correct = 0;
+        $graded = 0.0;
 
         foreach ($suite->cases as $index => $case) {
             $start = now()->toImmutable();
@@ -132,12 +139,17 @@ class CilReplayService
                     $correct++;
                 }
 
+                $weight = $this->confidenceWeight($response['confidence'] ?? null);
+                $caseScore = $matches ? $weight : 1.0 - $weight;
+                $graded += $caseScore;
+
                 $cases[] = [
                     'case_index' => $index,
                     'accepted' => $accepted,
                     'confidence' => $response['confidence'] ?? null,
                     'expected' => $expected,
                     'matches' => $matches,
+                    'graded_score' => round($caseScore, 4),
                 ];
 
                 $outputs = ['accepted' => $accepted, 'matches_expected' => $matches];
@@ -178,8 +190,23 @@ class CilReplayService
 
         return [
             'accuracy' => $total > 0 ? round($correct / $total, 4) : 0.0,
+            'graded_score' => $total > 0 ? round($graded / $total, 4) : 0.0,
             'cases' => $cases,
         ];
+    }
+
+    /*
+     * Brier-flavored calibration weight: being confidently right scores
+     * highest, confidently wrong lowest; errored cases contribute zero.
+     */
+    protected function confidenceWeight(?string $confidence): float
+    {
+        return match ($confidence) {
+            'high' => 1.0,
+            'medium' => 0.75,
+            'low' => 0.5,
+            default => 0.25,
+        };
     }
 
     /**
