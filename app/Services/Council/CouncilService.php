@@ -128,7 +128,7 @@ class CouncilService
             $items['A'.($i + 1)] = [
                 'kind' => 'artifact:'.$artifact->type->value,
                 'tier' => 'testimony',
-                'content' => mb_substr((string) $artifact->content, 0, 4000),
+                'content' => mb_substr((string) $artifact->content, 0, (int) config('buddy_agents.council.artifact_chars', 4000)),
             ];
         }
 

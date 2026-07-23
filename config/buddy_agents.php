@@ -57,6 +57,7 @@ return [
         'gate_attempt_threshold' => (int) env('BUDDY_COUNCIL_GATE_ATTEMPTS', 2),
         'gate_min_reason_length' => (int) env('BUDDY_COUNCIL_GATE_MIN_REASON', 30),
         'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 300),
+        'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 4000),
         'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 8000),
         'min_positions' => 3,
         'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
