@@ -68,11 +68,14 @@ class LangSmithEvaluationService
         }
 
         try {
+            // Candidate/run ids restart after migrate:fresh while LangSmith
+            // session names live forever, so a bare id pair collides (409).
             $response = $this->client()->post('/sessions', [
                 'name' => sprintf(
-                    'buddy-cil-candidate-%d-run-%d',
+                    'buddy-cil-candidate-%d-run-%d-%s',
                     $run->improvement_candidate_id,
                     $run->id,
+                    now()->format('ymdHis'),
                 ),
                 'reference_dataset_id' => $datasetId,
                 'start_time' => now()->toISOString(),
