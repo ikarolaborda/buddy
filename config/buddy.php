@@ -174,16 +174,4 @@ return [
         'vector_size' => (int) env('QDRANT_VECTOR_SIZE', 1536),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Escalation Thresholds
-    |--------------------------------------------------------------------------
-    */
-
-    'escalation' => [
-        'min_triggers' => 2,
-        'max_elapsed_seconds' => 300,
-        'max_failed_attempts' => 2,
-    ],
-
 ];

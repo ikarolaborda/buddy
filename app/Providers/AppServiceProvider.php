@@ -5,7 +5,6 @@ namespace App\Providers;
 use App\Ai\Prompting\PromptRegistry;
 use App\Contracts\MemoryGateway;
 use App\Enums\MemoryBackend;
-use App\Services\EscalationService;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\Memory\HubMemoryGateway;
 use App\Services\Memory\LegacyQdrantMemoryGateway;
@@ -18,7 +17,6 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(QdrantMemoryService::class);
-        $this->app->singleton(EscalationService::class);
         $this->app->singleton(EvaluatorOptimizerService::class);
         $this->app->singleton(PromptRegistry::class);
 
