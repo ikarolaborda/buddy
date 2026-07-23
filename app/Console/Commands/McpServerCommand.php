@@ -11,6 +11,7 @@ use App\Mcp\Tools\RefinePromptTool;
 use App\Mcp\Tools\SearchMemoryMcpTool;
 use App\Mcp\Tools\StoreMemoryMcpTool;
 use App\Mcp\Tools\SubmitProblemTool;
+use App\Mcp\UsageInstructions;
 use Illuminate\Console\Command;
 
 class McpServerCommand extends Command
@@ -120,6 +121,7 @@ class McpServerCommand extends Command
                     'name' => 'buddy',
                     'version' => '1.0.0',
                 ],
+                'instructions' => UsageInstructions::forInitialize(),
             ],
         ];
     }

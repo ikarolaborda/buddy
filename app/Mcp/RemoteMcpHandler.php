@@ -53,6 +53,7 @@ class RemoteMcpHandler
                 'protocolVersion' => $this->negotiate($message['params']['protocolVersion'] ?? null),
                 'capabilities' => ['tools' => new \stdClass],
                 'serverInfo' => ['name' => 'buddy', 'version' => '2.0.0'],
+                'instructions' => UsageInstructions::forInitialize(),
             ]),
             'ping' => $this->result($id, new \stdClass),
             'prompts/list' => $this->result($id, ['prompts' => []]),
@@ -130,6 +131,7 @@ class RemoteMcpHandler
         return $this->toolResult($id, [
             'task_id' => $task->ulid,
             'status' => $task->status->value,
+            'close_protocol' => UsageInstructions::CLOSE_PROTOCOL,
         ]);
     }
 
