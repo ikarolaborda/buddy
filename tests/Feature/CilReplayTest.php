@@ -166,6 +166,28 @@ class CilReplayTest extends TestCase
         app(CilReplayService::class)->replay($this->makeCandidate(), $this->makeSuite());
     }
 
+    public function test_model_candidate_threads_provider_to_both_legs(): void
+    {
+        EvaluatorOptimizerAgent::fake([
+            $this->agentResponse(true),
+            $this->agentResponse(false),
+            $this->agentResponse(true),
+            $this->agentResponse(false),
+        ]);
+
+        $candidate = ImprovementCandidate::create([
+            'kind' => 'model',
+            'rationale' => 'openrouter bake-off',
+            'payload' => ['model' => 'anthropic/claude-sonnet-5', 'provider' => 'openrouter'],
+        ]);
+
+        $run = app(CilReplayService::class)->replay($candidate, $this->makeSuite());
+
+        $this->assertEquals(1.0, $run->baseline_metrics['accuracy']);
+        $this->assertEquals(1.0, $run->candidate_metrics['accuracy']);
+        $this->assertNotNull($run->completed_at);
+    }
+
     public function test_replay_rejects_non_prompt_candidates(): void
     {
         $candidate = ImprovementCandidate::create(['kind' => 'routing', 'rationale' => 'x', 'payload' => []]);

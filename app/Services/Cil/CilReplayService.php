@@ -39,6 +39,8 @@ class CilReplayService
         $overrides = [];
         $baselineModel = null;
         $candidateModel = null;
+        $baselineProvider = null;
+        $candidateProvider = null;
 
         if ($candidate->kind === 'prompt') {
             $overrides = $candidate->payload['modules'] ?? [];
@@ -58,8 +60,14 @@ class CilReplayService
             // Both legs must be pinned or problem-type routing decides the
             // model per case and contaminates the A/B. Baseline resolves
             // with a null problem type: routing off, DB override honored.
-            $baselineModel = $this->profiles
-                ->resolve(EvaluatorOptimizerAgent::AGENT_KEY, null)['model'];
+            // Provider pins the same way so OpenRouter candidates compare
+            // against the profile provider, not an ambient default.
+            $profile = $this->profiles->resolve(EvaluatorOptimizerAgent::AGENT_KEY, null);
+            $baselineModel = $profile['model'];
+            $baselineProvider = $profile['provider'];
+            $candidateProvider = (string) ($candidate->payload['provider'] ?? '') !== ''
+                ? (string) $candidate->payload['provider']
+                : $baselineProvider;
         }
 
         $budget = count($suite->cases) * 2;
@@ -85,8 +93,8 @@ class CilReplayService
 
         $experimentRuns = [];
 
-        $baseline = $this->replayVariant($suite, [], 'baseline', $experimentId, $exampleIds, $experimentRuns, $baselineModel);
-        $candidateMetrics = $this->replayVariant($suite, $overrides, 'candidate', $experimentId, $exampleIds, $experimentRuns, $candidateModel);
+        $baseline = $this->replayVariant($suite, [], 'baseline', $experimentId, $exampleIds, $experimentRuns, $baselineModel, $baselineProvider);
+        $candidateMetrics = $this->replayVariant($suite, $overrides, 'candidate', $experimentId, $exampleIds, $experimentRuns, $candidateModel, $candidateProvider);
 
         $this->langsmith->postExperimentRuns($experimentRuns);
         $this->langsmith->endExperiment($run->refresh());
@@ -121,6 +129,7 @@ class CilReplayService
         array $exampleIds,
         array &$experimentRuns,
         ?string $model = null,
+        ?string $provider = null,
     ): array {
         $cases = [];
         $correct = 0;
@@ -131,7 +140,7 @@ class CilReplayService
             $expected = $case['expected']['accepted'] ?? null;
 
             try {
-                $response = $this->evaluateCase($case['inputs'] ?? $case, $overrides, $model);
+                $response = $this->evaluateCase($case['inputs'] ?? $case, $overrides, $model, $provider);
                 $accepted = (bool) $response['accepted'];
                 $matches = $expected === null || $accepted === $expected;
 
@@ -214,7 +223,7 @@ class CilReplayService
      * @param  array<string, string>  $overrides
      * @return array<string, mixed>
      */
-    protected function evaluateCase(array $inputs, array $overrides, ?string $model = null): array
+    protected function evaluateCase(array $inputs, array $overrides, ?string $model = null, ?string $provider = null): array
     {
         $task = new BuddyTask;
         $task->ulid = 'replay-'.Str::lower(Str::random(12));
@@ -233,7 +242,7 @@ class CilReplayService
             );
         }
 
-        $response = $agent->prompt($agent->buildPrompt(), model: $model);
+        $response = $agent->prompt($agent->buildPrompt(), provider: $provider, model: $model);
 
         return [
             'accepted' => $response['accepted'],
