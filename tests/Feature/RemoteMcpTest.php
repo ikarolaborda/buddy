@@ -138,4 +138,59 @@ class RemoteMcpTest extends TestCase
     {
         $this->rpc(['not' => 'jsonrpc'])->assertStatus(400);
     }
+
+    public function test_requested_outcome_at_the_contract_limit_is_persisted(): void
+    {
+        $outcome = str_repeat('a', 2000);
+
+        $submit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 40, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Long requested outcome',
+                'problem_type' => 'other',
+                'requested_outcome' => $outcome,
+            ]],
+        ]);
+
+        $submit->assertOk();
+        $payload = json_decode($submit->json('result.content.0.text'), true);
+        $this->assertArrayHasKey('task_id', $payload, 'submit_problem must accept a 2000-char requested_outcome');
+
+        $task = BuddyTask::where('ulid', $payload['task_id'])->firstOrFail();
+        $this->assertSame($outcome, $task->requested_outcome, 'the stored value must not be truncated');
+    }
+
+    public function test_oversized_requested_outcome_fails_validation_instead_of_erroring_opaquely(): void
+    {
+        $response = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 41, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Oversized requested outcome',
+                'problem_type' => 'other',
+                'requested_outcome' => str_repeat('a', 2001),
+            ]],
+        ]);
+
+        $response->assertOk();
+        $this->assertTrue($response->json('result.isError'));
+        $this->assertStringContainsString('Validation failed', $response->json('result.content.0.text'));
+    }
+
+    public function test_unknown_problem_type_fails_validation_instead_of_erroring_opaquely(): void
+    {
+        $response = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 42, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Unknown problem type',
+                'problem_type' => 'not_a_real_problem_type',
+            ]],
+        ]);
+
+        $response->assertOk();
+        $this->assertTrue($response->json('result.isError'));
+        $this->assertStringContainsString('Validation failed', $response->json('result.content.0.text'));
+    }
 }

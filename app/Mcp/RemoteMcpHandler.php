@@ -4,6 +4,7 @@ namespace App\Mcp;
 
 use App\DTOs\ProblemPacket;
 use App\Enums\ApiScope;
+use App\Enums\ProblemType;
 use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Models\ApiClient;
@@ -16,6 +17,8 @@ use App\Services\TaskStateService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /*
@@ -100,9 +103,29 @@ class RemoteMcpHandler
         } catch (ValidationException $e) {
             return $this->toolError($id, 'Validation failed: '.implode(' ', $e->validator->errors()->all()));
         } catch (\Throwable $e) {
+            // A bare "Tool execution failed." is unactionable from the client:
+            // the caller cannot tell a transient fault from a malformed packet,
+            // and cannot correlate the failure with anything in the logs. Return
+            // a reference the operator can grep for, and the exception class so
+            // the caller can at least distinguish fault categories. The message
+            // itself stays server-side, since it can carry query fragments.
+            $errorId = (string) Str::uuid();
+
+            Log::error('MCP tool execution failed', [
+                'error_id' => $errorId,
+                'tool' => $tool,
+                'client_id' => $client->id,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
             report($e);
 
-            return $this->toolError($id, 'Tool execution failed.');
+            return $this->toolError($id, sprintf(
+                'Tool execution failed [%s]. Reference: %s',
+                class_basename($e),
+                $errorId,
+            ));
         }
     }
 
@@ -112,15 +135,19 @@ class RemoteMcpHandler
      */
     protected function submitProblem(mixed $id, array $args, ApiClient $client): array
     {
+        // Limits mirror CreateTaskRequest: the MCP surface and the REST surface
+        // write the same columns, so a rule that exists on only one of them is a
+        // silent 500 waiting to happen on the other.
         $validated = Validator::validate($args, [
             'source_agent' => ['required', 'string', 'max:255'],
-            'task_summary' => ['required', 'string'],
-            'problem_type' => ['required', 'string'],
-            'repo' => ['sometimes', 'nullable', 'string'],
-            'branch' => ['sometimes', 'nullable', 'string'],
+            'task_summary' => ['required', 'string', 'max:10000'],
+            'problem_type' => ['required', 'string', Rule::enum(ProblemType::class)],
+            'repo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'branch' => ['sometimes', 'nullable', 'string', 'max:255'],
             'constraints' => ['sometimes', 'array'],
+            'constraints.*' => ['string'],
             'evidence' => ['sometimes', 'array'],
-            'requested_outcome' => ['sometimes', 'nullable', 'string'],
+            'requested_outcome' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
         $task = DB::transaction(fn () => $this->evaluator->createTask(
