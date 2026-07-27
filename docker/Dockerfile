@@ -1,4 +1,21 @@
+# LOCAL DEVELOPMENT IMAGE. Do not deploy this.
+#
+# It serves through `php artisan serve` on port 8000. Every deployed environment
+# routes ingress to port 8080 and is served by the images under docker/production/
+# (Dockerfile.octane for the API, Dockerfile for fpm and the worker). Deploying
+# this image does not fail loudly, it hangs: nothing listens on 8080 and every
+# request times out. That is exactly what happened on 2026-07-27.
+#
+# Release builds go through scripts/build-image.sh, which refuses this file.
+# The BUDDY_IMAGE_ROLE marker below lets docker/entrypoint.sh refuse to boot
+# this image against APP_ENV=production.
+
 FROM php:8.5-cli
+
+LABEL org.opencontainers.image.title="buddy-dev-local"
+LABEL org.opencontainers.image.description="Local development image. Not deployable. See docker/production/ for release images."
+
+ENV BUDDY_IMAGE_ROLE=dev
 
 RUN apt-get update && apt-get install -y \
     git \
