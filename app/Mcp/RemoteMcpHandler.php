@@ -43,13 +43,34 @@ class RemoteMcpHandler
     public function handle(array $message, ApiClient $client, ApiKey $key, ?RequestContext $context = null): ?array
     {
         $id = $message['id'] ?? null;
-        $method = $message['method'] ?? '';
+        $method = is_string($message['method'] ?? null) ? $message['method'] : '';
         $context ??= RequestContext::fromMessage($message);
+
+        // The 2026-07-28 transport does not define request-metadata headers
+        // for notification POSTs. Requests, by contrast, are fail-closed so a
+        // proxy can never route on a header that disagrees with the body.
+        if ($context->isModern() && array_key_exists('id', $message)) {
+            $context->validateModernRequest($message);
+        }
 
         $this->observe($method, $context, $client);
 
         if (str_starts_with($method, 'notifications/')) {
             return null;
+        }
+
+        if ($context->isModern()) {
+            $response = match ($method) {
+                'server/discover' => $this->discover($id),
+                'ping' => $this->result($id, new \stdClass),
+                'prompts/list' => $this->result($id, $this->cacheable(['prompts' => []])),
+                'resources/list' => $this->result($id, $this->cacheable(['resources' => []])),
+                'tools/list' => $this->result($id, $this->cacheable(['tools' => RemoteToolDefinitions::all()])),
+                'tools/call' => $this->call($id, $message['params'] ?? [], $client, $key),
+                default => throw McpProtocolException::methodNotFound($method),
+            };
+
+            return $this->modernize($response);
         }
 
         return match ($method) {
@@ -69,6 +90,71 @@ class RemoteMcpHandler
             'tools/call' => $this->call($id, $message['params'] ?? [], $client, $key),
             default => $this->error($id, -32601, "Method not found: {$method}"),
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function discover(mixed $id): array
+    {
+        return $this->result($id, $this->cacheable([
+            'supportedVersions' => ProtocolVersions::MODERN_SUPPORTED,
+            'capabilities' => [
+                'tools' => new \stdClass,
+                'resources' => new \stdClass,
+                'prompts' => new \stdClass,
+            ],
+            'instructions' => UsageInstructions::forInitialize(),
+        ]));
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function cacheable(array $result): array
+    {
+        return $result + [
+            'ttlMs' => 3600000,
+            'cacheScope' => 'public',
+        ];
+    }
+
+    /**
+     * Add the per-result fields required by the stateless protocol without
+     * changing the legacy response shape used during the compatibility window.
+     *
+     * @param  array<string, mixed>  $response
+     * @return array<string, mixed>
+     */
+    protected function modernize(array $response): array
+    {
+        $result = $response['result'] ?? null;
+
+        if ($result instanceof \stdClass) {
+            $result = [];
+        }
+
+        if (! is_array($result)) {
+            return $response;
+        }
+
+        $result['resultType'] ??= 'complete';
+        $meta = $result['_meta'] ?? [];
+        $meta = is_array($meta) ? $meta : [];
+        $meta['io.modelcontextprotocol/serverInfo'] = $this->serverInfo();
+        $result['_meta'] = $meta;
+        $response['result'] = $result;
+
+        return $response;
+    }
+
+    /**
+     * @return array{name: string, version: string}
+     */
+    protected function serverInfo(): array
+    {
+        return ['name' => 'buddy', 'version' => '2.0.0'];
     }
 
     /*

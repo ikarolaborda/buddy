@@ -21,6 +21,7 @@ class ProtocolVersionParityTest extends TestCase
     {
         $this->assertSame('2026-07-28', ProtocolVersions::LATEST);
         $this->assertContains('2026-07-28', ProtocolVersions::SUPPORTED);
+        $this->assertSame(['2026-07-28'], ProtocolVersions::MODERN_SUPPORTED);
     }
 
     public function test_it_keeps_the_older_versions_for_the_deprecation_window(): void
@@ -63,10 +64,36 @@ class ProtocolVersionParityTest extends TestCase
     }
 
     /*
-     * The old behaviour answered every unknown version with 2025-06-18 and
-     * said nothing, so a client that had migrated to the stateless spec got
-     * a success-shaped response and silently spoke the old protocol. The
-     * fallback itself is spec-legal; the silence was the defect.
+     * Regression, and the reason this file gained two tests: 2025-11-25 was
+     * missing from SUPPORTED, so every Claude Code client (2.1.227 asks for
+     * exactly this revision) was answered with 2026-07-28 and refused to
+     * connect. Named after the client because that is what made it an outage
+     * rather than a lint.
+     */
+    public function test_it_returns_the_revision_claude_code_requests(): void
+    {
+        $this->assertSame('2025-11-25', ProtocolVersions::negotiate('2025-11-25'));
+    }
+
+    /*
+     * A version we skipped must not be answered with something newer than the
+     * client asked for, because a client cannot speak a revision from its own
+     * future. The suggestion walks DOWN to the newest entry that is not newer
+     * than the request.
+     */
+    public function test_it_suggests_the_nearest_older_version_for_an_unknown_gap(): void
+    {
+        $this->assertSame('2025-11-25', ProtocolVersions::negotiate('2026-01-01'));
+        $this->assertSame('2025-06-18', ProtocolVersions::negotiate('2025-07-01'));
+    }
+
+    /*
+     * The remaining LATEST cases: a request older than everything we support,
+     * and one that is not a version at all. There is nothing sensible to walk
+     * down to, so the newest is the only honest suggestion. The downgrade is
+     * always logged - an earlier behaviour answered silently, and a client
+     * speaking the wrong protocol while every response looks like success is
+     * the failure mode that costs the most to find.
      */
     public function test_it_serves_the_newest_version_when_the_request_is_unknown(): void
     {
@@ -80,13 +107,15 @@ class ProtocolVersionParityTest extends TestCase
             'method' => 'tools/call',
             'params' => [
                 '_meta' => [
-                    'protocolVersion' => '2026-07-28',
-                    'clientInfo' => ['name' => 'claude-code', 'version' => '9.9.9'],
+                    'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+                    'io.modelcontextprotocol/clientInfo' => ['name' => 'claude-code', 'version' => '9.9.9'],
+                    'io.modelcontextprotocol/clientCapabilities' => [],
                 ],
             ],
         ]);
 
         $this->assertTrue($context->hasMeta);
+        $this->assertTrue($context->isModern());
         $this->assertSame('2026-07-28', $context->protocolVersion);
         $this->assertSame('claude-code/9.9.9', $context->label());
     }
@@ -102,7 +131,10 @@ class ProtocolVersionParityTest extends TestCase
             'method' => 'initialize',
             'params' => [
                 'protocolVersion' => '2024-11-05',
-                '_meta' => ['protocolVersion' => '2026-07-28'],
+                '_meta' => [
+                    'io.modelcontextprotocol/protocolVersion' => '2026-07-28',
+                    'io.modelcontextprotocol/clientCapabilities' => [],
+                ],
             ],
         ]);
 

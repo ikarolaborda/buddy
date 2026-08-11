@@ -23,7 +23,7 @@ ini_set('display_errors', 'stderr');
  * without the framework autoloader, so it cannot import the class, and a
  * silent divergence here is exactly the drift that test exists to catch.
  */
-const SUPPORTED_PROTOCOL_VERSIONS = ['2026-07-28', '2025-06-18', '2025-03-26', '2024-11-05'];
+const SUPPORTED_PROTOCOL_VERSIONS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 $baseUrl = rtrim((string) getenv('BUDDY_BASE_URL'), '/');
 $apiKey = (string) getenv('BUDDY_API_KEY');

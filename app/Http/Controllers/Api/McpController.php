@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mcp\McpProtocolException;
 use App\Mcp\RemoteMcpHandler;
 use App\Mcp\RequestContext;
 use Illuminate\Http\JsonResponse;
@@ -21,19 +22,23 @@ class McpController extends Controller
     {
         $message = $request->json()->all();
 
-        if (! isset($message['jsonrpc'])) {
+        if (($message['jsonrpc'] ?? null) !== '2.0') {
             return response()->json([
                 'jsonrpc' => '2.0',
                 'error' => ['code' => -32700, 'message' => 'Parse error'],
             ], 400);
         }
 
-        $response = $this->handler->handle(
-            $message,
-            $request->attributes->get('api_client'),
-            $request->attributes->get('api_key'),
-            RequestContext::fromMessage($message, $request),
-        );
+        try {
+            $response = $this->handler->handle(
+                $message,
+                $request->attributes->get('api_client'),
+                $request->attributes->get('api_key'),
+                RequestContext::fromMessage($message, $request),
+            );
+        } catch (McpProtocolException $e) {
+            return response()->json($e->toResponse($message['id'] ?? null), $e->httpStatus);
+        }
 
         if ($response === null) {
             return response()->noContent(202);

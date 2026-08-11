@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\ApiScope;
+use App\Mcp\ProtocolVersions;
 use App\Models\ApiClient;
 use App\Models\BuddyTask;
 use App\Services\ApiKeyService;
@@ -33,6 +34,37 @@ class RemoteMcpTest extends TestCase
         return $this->withToken($key ?? $this->key)->postJson('/api/mcp', $message);
     }
 
+    protected function modernMessage(array $message): array
+    {
+        $message['params'] ??= [];
+        $message['params']['_meta'] ??= [
+            'io.modelcontextprotocol/protocolVersion' => ProtocolVersions::LATEST,
+            'io.modelcontextprotocol/clientCapabilities' => new \stdClass,
+            'io.modelcontextprotocol/clientInfo' => ['name' => 'remote-agent', 'version' => 'test'],
+        ];
+
+        return $message;
+    }
+
+    protected function modernRpc(array $message, ?string $key = null, array $headers = [])
+    {
+        $message = $this->modernMessage($message);
+        $method = (string) ($message['method'] ?? '');
+        $defaults = [
+            'MCP-Protocol-Version' => ProtocolVersions::LATEST,
+            'Mcp-Method' => $method,
+        ];
+
+        if (in_array($method, ['tools/call', 'resources/read', 'prompts/get'], true)) {
+            $field = $method === 'resources/read' ? 'uri' : 'name';
+            $defaults['Mcp-Name'] = (string) ($message['params'][$field] ?? '');
+        }
+
+        return $this->withToken($key ?? $this->key)
+            ->withHeaders(array_merge($defaults, $headers))
+            ->postJson('/api/mcp', $message);
+    }
+
     public function test_it_requires_authentication(): void
     {
         $this->postJson('/api/mcp', ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping'])
@@ -54,6 +86,94 @@ class RemoteMcpTest extends TestCase
         $this->rpc(['jsonrpc' => '2.0', 'id' => 2, 'method' => 'ping'])
             ->assertOk()
             ->assertJson(['id' => 2, 'result' => []]);
+    }
+
+    public function test_modern_discovery_succeeds_without_initialize(): void
+    {
+        $response = $this->modernRpc(['jsonrpc' => '2.0', 'id' => 'discover-1', 'method' => 'server/discover']);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('result.resultType', 'complete')
+            ->assertJsonPath('result.supportedVersions.0', ProtocolVersions::LATEST)
+            ->assertJsonPath('result.capabilities.tools', [])
+            ->assertJsonPath('result.ttlMs', 3600000)
+            ->assertJsonPath('result.cacheScope', 'public');
+
+        $this->assertSame('buddy', $response->json()['result']['_meta']['io.modelcontextprotocol/serverInfo']['name']);
+    }
+
+    public function test_modern_results_include_result_type_server_info_and_cache_metadata(): void
+    {
+        $response = $this->modernRpc(['jsonrpc' => '2.0', 'id' => 21, 'method' => 'tools/list']);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('result.resultType', 'complete')
+            ->assertJsonPath('result.ttlMs', 3600000)
+            ->assertJsonPath('result.cacheScope', 'public');
+
+        $this->assertSame('2.0.0', $response->json()['result']['_meta']['io.modelcontextprotocol/serverInfo']['version']);
+    }
+
+    public function test_modern_tools_call_decodes_a_base64_name_header_before_validating_it(): void
+    {
+        $name = 'buddy.get_task_status';
+
+        $this->modernRpc([
+            'jsonrpc' => '2.0', 'id' => 22, 'method' => 'tools/call',
+            'params' => ['name' => $name, 'arguments' => ['task_id' => '01J00000000000000000000000']],
+        ], headers: ['Mcp-Name' => '=?base64?'.base64_encode($name).'?='])
+            ->assertOk()
+            ->assertJsonPath('result.resultType', 'complete')
+            ->assertJsonPath('result.isError', true);
+    }
+
+    public function test_modern_requests_reject_missing_or_mismatched_routing_headers(): void
+    {
+        $message = $this->modernMessage(['jsonrpc' => '2.0', 'id' => 23, 'method' => 'ping']);
+
+        $this->withToken($this->key)
+            ->withHeaders(['Mcp-Method' => 'ping'])
+            ->postJson('/api/mcp', $message)
+            ->assertStatus(400)
+            ->assertJsonPath('error.code', -32020);
+
+        $this->modernRpc(['jsonrpc' => '2.0', 'id' => 24, 'method' => 'ping'], headers: ['Mcp-Method' => 'tools/list'])
+            ->assertStatus(400)
+            ->assertJsonPath('error.code', -32020);
+    }
+
+    public function test_modern_requests_reject_missing_required_meta_and_unsupported_versions(): void
+    {
+        $this->withToken($this->key)
+            ->withHeaders([
+                'MCP-Protocol-Version' => ProtocolVersions::LATEST,
+                'Mcp-Method' => 'ping',
+            ])
+            ->postJson('/api/mcp', ['jsonrpc' => '2.0', 'id' => 25, 'method' => 'ping'])
+            ->assertStatus(400)
+            ->assertJsonPath('error.code', -32602);
+
+        $unsupported = $this->modernMessage(['jsonrpc' => '2.0', 'id' => 26, 'method' => 'ping']);
+        $unsupported['params']['_meta']['io.modelcontextprotocol/protocolVersion'] = '2099-01-01';
+
+        $this->withToken($this->key)
+            ->withHeaders([
+                'MCP-Protocol-Version' => '2099-01-01',
+                'Mcp-Method' => 'ping',
+            ])
+            ->postJson('/api/mcp', $unsupported)
+            ->assertStatus(400)
+            ->assertJsonPath('error.code', -32022)
+            ->assertJsonPath('error.data.supportedVersions.0', ProtocolVersions::LATEST);
+    }
+
+    public function test_unknown_modern_methods_return_not_found(): void
+    {
+        $this->modernRpc(['jsonrpc' => '2.0', 'id' => 27, 'method' => 'sampling/createMessage'])
+            ->assertStatus(404)
+            ->assertJsonPath('error.code', -32601);
     }
 
     public function test_notifications_return_202_without_body(): void

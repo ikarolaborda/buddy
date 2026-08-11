@@ -17,7 +17,7 @@ return [
 
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['Authorization', 'Content-Type', 'Accept', 'Mcp-Session-Id', 'MCP-Protocol-Version'],
+    'allowed_headers' => ['Authorization', 'Content-Type', 'Accept', 'Mcp-Session-Id', 'MCP-Protocol-Version', 'Mcp-Method', 'Mcp-Name'],
 
     'exposed_headers' => [],
 
