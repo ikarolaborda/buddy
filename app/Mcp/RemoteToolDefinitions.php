@@ -5,9 +5,41 @@ namespace App\Mcp;
 class RemoteToolDefinitions
 {
     /**
+     * The definitions are constant for the life of the process, but they were
+     * rebuilt from scratch on every tools/list - a few hundred array
+     * allocations per call, on a surface every client hits at least once per
+     * session and some hit repeatedly. Memoised per process, which under
+     * Octane means once per worker rather than once per request.
+     *
+     * @var array<int, array<string, mixed>>|null
+     */
+    private static ?array $cached = null;
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public static function all(): array
+    {
+        if (self::$cached !== null && config('buddy.mcp.cache_tool_definitions', true)) {
+            return self::$cached;
+        }
+
+        return self::$cached = self::build();
+    }
+
+    /*
+     * Drops the memo. Only tests need this; production definitions never
+     * change without a deploy.
+     */
+    public static function flush(): void
+    {
+        self::$cached = null;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function build(): array
     {
         $taskId = ['type' => 'string', 'description' => 'Task ULID returned by buddy.submit_problem.'];
 
@@ -93,7 +125,17 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.close_task',
-                'description' => 'Close a task. Always pass outcome: it labels the trace corpus that recommendation quality is measured and improved against, so a close without an outcome is a lost signal. Optionally add notes and a learnings summary stored into Buddy memory.',
+                /*
+                 * The close protocol travels on the TOOL, not only on the
+                 * initialize handshake. Under the 2026-07-28 stateless
+                 * revision a client need never call initialize, and that
+                 * handshake was buddy's only channel for teaching this -
+                 * losing it would quietly erode the outcome labels the whole
+                 * learning corpus is built from. tools/list is the one call
+                 * every client makes, so the text rides there, sourced from
+                 * the same constant so the two can never drift apart.
+                 */
+                'description' => 'Close a task. '.UsageInstructions::CLOSE_PROTOCOL.' Optionally add notes and a learnings summary stored into Buddy memory.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [

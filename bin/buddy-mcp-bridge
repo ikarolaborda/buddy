@@ -17,7 +17,13 @@
 error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('display_errors', 'stderr');
 
-const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+/*
+ * Kept in step with App\Mcp\ProtocolVersions::SUPPORTED by
+ * tests/Feature/ProtocolVersionParityTest.php - this shim runs standalone
+ * without the framework autoloader, so it cannot import the class, and a
+ * silent divergence here is exactly the drift that test exists to catch.
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = ['2026-07-28', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 $baseUrl = rtrim((string) getenv('BUDDY_BASE_URL'), '/');
 $apiKey = (string) getenv('BUDDY_API_KEY');

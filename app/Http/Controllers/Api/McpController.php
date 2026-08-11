@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Mcp\RemoteMcpHandler;
+use App\Mcp\RequestContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -31,6 +32,7 @@ class McpController extends Controller
             $message,
             $request->attributes->get('api_client'),
             $request->attributes->get('api_key'),
+            RequestContext::fromMessage($message, $request),
         );
 
         if ($response === null) {

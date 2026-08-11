@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Mcp\McpToolRegistry;
+use App\Mcp\ProtocolVersions;
 use App\Mcp\Tools\AttachArtifactMcpTool;
 use App\Mcp\Tools\CloseTaskMcpTool;
 use App\Mcp\Tools\GetRecommendationTool;
@@ -95,8 +96,6 @@ class McpServerCommand extends Command
         };
     }
 
-    protected const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-
     /**
      * @param  array<string, mixed>  $params
      * @return array<string, mixed>
@@ -105,9 +104,9 @@ class McpServerCommand extends Command
     {
         $requested = $params['protocolVersion'] ?? null;
 
-        $negotiated = in_array($requested, self::SUPPORTED_PROTOCOL_VERSIONS, true)
+        $negotiated = in_array($requested, ProtocolVersions::SUPPORTED, true)
             ? $requested
-            : self::SUPPORTED_PROTOCOL_VERSIONS[0];
+            : ProtocolVersions::LATEST;
 
         return [
             'jsonrpc' => '2.0',

@@ -179,6 +179,24 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | MCP protocol surface
+    |--------------------------------------------------------------------------
+    |
+    | Phase A of the 2026-07-28 stateless migration observes what real clients
+    | send (`_meta`, Mcp-Method, Mcp-Name) before buddy depends on any of it.
+    | Sampling keeps the hot path cheap: every tools/call would otherwise write
+    | a log line, and log volume is a cost line.
+    |
+    */
+
+    'mcp' => [
+        'observe_protocol' => (bool) env('BUDDY_MCP_OBSERVE', true),
+        'observe_sample_rate' => (int) env('BUDDY_MCP_OBSERVE_SAMPLE_RATE', 20),
+        'cache_tool_definitions' => (bool) env('BUDDY_MCP_CACHE_TOOLS', true),
+    ],
+
     'qdrant' => [
         'host' => env('QDRANT_HOST', 'http://localhost'),
         'port' => (int) env('QDRANT_PORT', 6333),

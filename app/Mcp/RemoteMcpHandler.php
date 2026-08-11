@@ -30,8 +30,6 @@ use Illuminate\Validation\ValidationException;
  */
 class RemoteMcpHandler
 {
-    protected const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
-
     public function __construct(
         protected EvaluatorOptimizerService $evaluator,
         protected OutboxPublisher $outbox,
@@ -42,10 +40,13 @@ class RemoteMcpHandler
      * @param  array<string, mixed>  $message
      * @return array<string, mixed>|null null means "202, no body"
      */
-    public function handle(array $message, ApiClient $client, ApiKey $key): ?array
+    public function handle(array $message, ApiClient $client, ApiKey $key, ?RequestContext $context = null): ?array
     {
         $id = $message['id'] ?? null;
         $method = $message['method'] ?? '';
+        $context ??= RequestContext::fromMessage($message);
+
+        $this->observe($method, $context, $client);
 
         if (str_starts_with($method, 'notifications/')) {
             return null;
@@ -53,7 +54,10 @@ class RemoteMcpHandler
 
         return match ($method) {
             'initialize' => $this->result($id, [
-                'protocolVersion' => $this->negotiate($message['params']['protocolVersion'] ?? null),
+                'protocolVersion' => ProtocolVersions::negotiate(
+                    $context->protocolVersion,
+                    $context->label() ?? $client->name,
+                ),
                 'capabilities' => ['tools' => new \stdClass],
                 'serverInfo' => ['name' => 'buddy', 'version' => '2.0.0'],
                 'instructions' => UsageInstructions::forInitialize(),
@@ -67,11 +71,34 @@ class RemoteMcpHandler
         };
     }
 
-    protected function negotiate(?string $requested): string
+    /*
+     * Phase A of the 2026-07-28 migration: observe, do not enforce.
+     *
+     * The stateless revision makes Mcp-Method and Mcp-Name mandatory so that
+     * gateways can route without reading the body, and moves client identity
+     * into `_meta`. Before buddy depends on any of that, it needs to know what
+     * the real client actually sends - rejecting requests on a header the
+     * current Claude Code build may not emit yet would take the review sidecar
+     * offline to enforce a rule nothing is breaking.
+     *
+     * Sampled rather than logged on every call: this runs on the hot path of
+     * every tools/call, and a log line per request is a cost line per request.
+     */
+    protected function observe(string $method, RequestContext $context, ApiClient $client): void
     {
-        return in_array($requested, self::SUPPORTED_PROTOCOL_VERSIONS, true)
-            ? $requested
-            : self::SUPPORTED_PROTOCOL_VERSIONS[0];
+        if (! config('buddy.mcp.observe_protocol', true)) {
+            return;
+        }
+
+        $rate = (int) config('buddy.mcp.observe_sample_rate', 20);
+
+        if ($rate > 1 && random_int(1, $rate) !== 1) {
+            return;
+        }
+
+        Log::info('MCP protocol telemetry', $context->telemetry($method) + [
+            'api_client' => $client->name,
+        ]);
     }
 
     /**
