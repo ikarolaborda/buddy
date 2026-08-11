@@ -21,7 +21,11 @@
 #
 set -euo pipefail
 
-REGISTRY="${BUDDY_ACR:-acrbuddydevzywxldjeqo3sa}"
+# The old default, acrbuddydevzywxldjeqo3sa, lived in the decommissioned
+# subscription and no longer exists, so the unset case failed at the push
+# rather than at the argument check. Buddy now runs in the credited
+# subscription and this is the registry its container app pulls from.
+REGISTRY="${BUDDY_ACR:-acrbuddycreditoerh7kdnhtzo6}"
 REF="${1:-}"
 TARGET="${2:-both}"
 
