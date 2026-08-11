@@ -8,10 +8,27 @@ param environment string
 param location string
 param containerAppsEnvironmentId string
 param keyVaultUri string
+param keyVaultName string
+
+var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'id-redis-${environment}'
   location: location
+}
+
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource vaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, identity.id, keyVaultSecretsUser)
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUser)
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
 }
 
 resource redisApp 'Microsoft.App/containerApps@2024-03-01' = {
@@ -23,6 +40,7 @@ resource redisApp 'Microsoft.App/containerApps@2024-03-01' = {
       '${identity.id}': {}
     }
   }
+  dependsOn: [vaultRole]
   properties: {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {

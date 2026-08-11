@@ -6,17 +6,50 @@ param environment string
 param location string
 param containerAppsEnvironmentId string
 param acrLoginServer string
+param acrName string
 param imageTag string
 param keyVaultUri string
+param keyVaultName string
 param postgresFqdn string
 param redisHostName string
 param redisPort string = '10000'
 param redisUseTls bool = true
 param memoryHubInternalUrl string
 
+var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
+var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'id-buddy-worker-${environment}'
   location: location
+}
+
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+resource vaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, identity.id, keyVaultSecretsUser)
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUser)
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(registry.id, identity.id, acrPull)
+  scope: registry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPull)
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
 }
 
 resource worker 'Microsoft.App/containerApps@2024-03-01' = {
@@ -28,6 +61,10 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
       '${identity.id}': {}
     }
   }
+  dependsOn: [
+    vaultRole
+    acrPullRole
+  ]
   properties: {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
@@ -66,6 +103,16 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'openrouter-api-key'
           keyVaultUrl: '${keyVaultUri}secrets/openrouter-api-key'
+          identity: identity.id
+        }
+        {
+          name: 'hub-token'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-hub-token'
+          identity: identity.id
+        }
+        {
+          name: 'openai-key'
+          keyVaultUrl: '${keyVaultUri}secrets/openai-api-key'
           identity: identity.id
         }
       ]
@@ -133,6 +180,9 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
             { name: 'BUDDY_MEMORY_BACKEND', value: 'hub' }
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
+            { name: 'BUDDY_MEMORY_HUB_TOKEN', secretRef: 'hub-token' }
+            { name: 'OPENAI_API_KEY', secretRef: 'openai-key' }
+            { name: 'LANGSMITH_SEND_PROMPTS', value: 'true' }
           ]
         }
       ]

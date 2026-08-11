@@ -6,16 +6,50 @@ param environment string
 param location string
 param containerAppsEnvironmentId string
 param acrLoginServer string
+param acrName string
 param imageTag string
 param keyVaultUri string
+param keyVaultName string
 param postgresFqdn string
 param redisHostName string
 param redisPort string = '10000'
 param redisUseTls bool = true
+param deployOutboxRepair bool = true
+
+var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
+var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'id-buddy-jobs-${environment}'
   location: location
+}
+
+resource vault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: acrName
+}
+
+resource vaultRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, identity.id, keyVaultSecretsUser)
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUser)
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource acrPullRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(registry.id, identity.id, acrPull)
+  scope: registry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPull)
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
 }
 
 var commonEnv = [
@@ -45,6 +79,10 @@ resource migrationJob 'Microsoft.App/jobs@2024-03-01' = {
       '${identity.id}': {}
     }
   }
+  dependsOn: [
+    vaultRole
+    acrPullRole
+  ]
   properties: {
     environmentId: containerAppsEnvironmentId
     configuration: {
@@ -101,7 +139,7 @@ resource migrationJob 'Microsoft.App/jobs@2024-03-01' = {
   }
 }
 
-resource outboxRepairJob 'Microsoft.App/jobs@2024-03-01' = {
+resource outboxRepairJob 'Microsoft.App/jobs@2024-03-01' = if (deployOutboxRepair) {
   name: 'caj-buddy-outbox-${environment}'
   location: location
   identity: {
@@ -110,6 +148,10 @@ resource outboxRepairJob 'Microsoft.App/jobs@2024-03-01' = {
       '${identity.id}': {}
     }
   }
+  dependsOn: [
+    vaultRole
+    acrPullRole
+  ]
   properties: {
     environmentId: containerAppsEnvironmentId
     configuration: {

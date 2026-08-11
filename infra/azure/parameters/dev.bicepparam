@@ -9,6 +9,7 @@ param environment = 'dev'
 param location = 'northeurope'
 param buddyImageTag = 'set-by-ci-commit-sha'
 param hubImageTag = 'set-by-ci-commit-sha'
+param embeddingImageTag = 'set-by-ci-commit-sha'
 // This repo is public: the concrete Qdrant Cloud hostname stays out of
 // git. Export QDRANT_HOST before a deployment; the live value is on the
 // ca-memory-hub-dev container app (az containerapp show) and in Key Vault.

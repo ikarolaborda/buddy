@@ -7,7 +7,7 @@
 targetScope = 'resourceGroup'
 
 @description('Deployment environment')
-@allowed(['dev', 'prod'])
+@allowed(['dev', 'credit', 'prod'])
 param environment string
 
 @description('Azure region for the whole data plane. North Europe only if every dependency SKU is available there; otherwise West Europe for all new resources.')
@@ -16,11 +16,17 @@ param location string
 @description('Deploy the workload apps (hub, api, worker, jobs). False provisions core infrastructure only, so images and the Qdrant secret can be created first.')
 param deployWorkloads bool = false
 
+@description('Deploy work-consuming background workers and schedules. Disable during target staging so a restored outbox cannot be processed before cutover.')
+param deployBackgroundWorkers bool = true
+
 @description('Immutable commit-SHA image tag for Buddy images')
 param buddyImageTag string = 'none'
 
 @description('Immutable commit-SHA image tag for the memory hub image')
 param hubImageTag string = 'none'
+
+@description('Immutable image tag for the MiniLM embedding sidecar')
+param embeddingImageTag string = 'none'
 
 @description('Qdrant Managed Cloud gRPC hostname (external lifecycle)')
 param qdrantHost string = ''
@@ -101,20 +107,21 @@ module redis 'modules/redis.bicep' = if (environment == 'prod') {
   }
 }
 
-module redisContainer 'modules/redis-container.bicep' = if (environment == 'dev') {
+module redisContainer 'modules/redis-container.bicep' = if (deployWorkloads && environment != 'prod') {
   name: 'redis-container'
   params: {
     environment: environment
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
     keyVaultUri: keyVault.outputs.vaultUri
+    keyVaultName: keyVault.outputs.name
   }
 }
 
 // In-environment TCP apps are reached via the short app name on the
 // exposed port; the internal FQDN's HTTP-oriented ingress path does not
 // carry raw TCP reliably (observed: connect timeouts from sibling apps).
-var redisHost = environment == 'prod' ? redis.outputs.hostName : 'ca-redis-dev'
+var redisHost = environment == 'prod' ? redis!.outputs.hostName : 'ca-redis-${environment}'
 var redisPort = environment == 'prod' ? '10000' : '6379'
 var redisTls = environment == 'prod'
 
@@ -135,7 +142,10 @@ module memoryHub 'modules/memory-hub.bicep' = if (deployWorkloads) {
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
     acrLoginServer: acr.outputs.loginServer
+    acrName: acr.outputs.name
     imageTag: hubImageTag
+    embeddingImageTag: embeddingImageTag
+    keyVaultName: keyVault.outputs.name
     qdrantHost: qdrantHost
     qdrantPort: qdrantPort
     qdrantApiKeySecretUri: qdrantApiKeySecretUri
@@ -150,30 +160,34 @@ module buddyApi 'modules/buddy-api.bicep' = if (deployWorkloads) {
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
     acrLoginServer: acr.outputs.loginServer
+    acrName: acr.outputs.name
     imageTag: buddyImageTag
     keyVaultUri: keyVault.outputs.vaultUri
+    keyVaultName: keyVault.outputs.name
     postgresFqdn: postgres.outputs.fqdn
     redisHostName: redisHost
     redisPort: redisPort
     redisUseTls: redisTls
-    memoryHubInternalUrl: memoryHub.outputs.internalUrl
+    memoryHubInternalUrl: memoryHub!.outputs.internalUrl
   }
 }
 
-module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads) {
+module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployBackgroundWorkers) {
   name: 'buddy-worker'
   params: {
     environment: environment
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
     acrLoginServer: acr.outputs.loginServer
+    acrName: acr.outputs.name
     imageTag: buddyImageTag
     keyVaultUri: keyVault.outputs.vaultUri
+    keyVaultName: keyVault.outputs.name
     postgresFqdn: postgres.outputs.fqdn
     redisHostName: redisHost
     redisPort: redisPort
     redisUseTls: redisTls
-    memoryHubInternalUrl: memoryHub.outputs.internalUrl
+    memoryHubInternalUrl: memoryHub!.outputs.internalUrl
   }
 }
 
@@ -184,22 +198,68 @@ module jobs 'modules/jobs.bicep' = if (deployWorkloads) {
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
     acrLoginServer: acr.outputs.loginServer
+    acrName: acr.outputs.name
     imageTag: buddyImageTag
     keyVaultUri: keyVault.outputs.vaultUri
+    keyVaultName: keyVault.outputs.name
     postgresFqdn: postgres.outputs.fqdn
     redisHostName: redisHost
     redisPort: redisPort
     redisUseTls: redisTls
+    deployOutboxRepair: deployBackgroundWorkers
   }
 }
 
-module alerts 'modules/alerts.bicep' = if (alertEmailAddress != '') {
+module alerts 'modules/alerts.bicep' = if (deployWorkloads && deployBackgroundWorkers && alertEmailAddress != '') {
   name: 'alerts'
   params: {
     environment: environment
     alertEmailAddress: alertEmailAddress
     monthlyBudgetAmount: monthlyBudgetAmount
   }
+  dependsOn: [
+    buddyApi
+    buddyWorker
+    memoryHub
+  ]
 }
 
-output apiUrl string = deployWorkloads ? buddyApi.outputs.apiUrl : ''
+module memoryBackup 'modules/memory-backup.bicep' = if (deployWorkloads && deployBackgroundWorkers) {
+  name: 'memory-backup'
+  params: {
+    environment: environment
+    location: location
+    containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
+    qdrantRestUrl: 'https://${qdrantHost}:6333'
+    qdrantApiKeySecretUri: qdrantApiKeySecretUri
+    storageAccountName: containerAppsEnvironment.outputs.hubStorageAccountName
+  }
+  dependsOn: [
+    memoryHub
+  ]
+}
+
+module feedbackHealth 'modules/feedback-health.bicep' = if (deployWorkloads && deployBackgroundWorkers && alertEmailAddress != '') {
+  name: 'feedback-health'
+  params: {
+    environment: environment
+    location: location
+    containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
+    acrLoginServer: acr.outputs.loginServer
+    imageTag: buddyImageTag
+    keyVaultUri: keyVault.outputs.vaultUri
+    postgresFqdn: postgres.outputs.fqdn
+    redisHost: redisHost
+    redisPort: redisPort
+    logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
+    actionGroupId: alerts!.outputs.actionGroupId
+  }
+  dependsOn: [
+    jobs
+  ]
+}
+
+output apiUrl string = deployWorkloads ? buddyApi!.outputs.apiUrl : ''
+output acrName string = acr.outputs.name
+output keyVaultName string = keyVault.outputs.name
+output hubStorageAccountName string = containerAppsEnvironment.outputs.hubStorageAccountName

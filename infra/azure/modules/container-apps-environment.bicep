@@ -27,21 +27,6 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-// Azure Files share for the hub's small JSON registries only
-// (jobs/schedules/revocations). Qdrant data never lives here.
-resource hubStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
-  parent: env
-  name: 'hub-data'
-  properties: {
-    azureFile: {
-      accountName: hubStorageAccount.name
-      shareName: 'hub-data'
-      accessMode: 'ReadWrite'
-      accountKey: hubStorageAccount.listKeys().keys[0].value
-    }
-  }
-}
-
 resource hubStorageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
   name: 'stbuddyhub${environment}'
   location: location
@@ -55,8 +40,52 @@ resource hubStorageAccount 'Microsoft.Storage/storageAccounts@2023-04-01' = {
   }
 }
 
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-04-01' = {
+  parent: hubStorageAccount
+  name: 'default'
+  properties: {
+    deleteRetentionPolicy: {
+      enabled: true
+      days: 30
+    }
+    containerDeleteRetentionPolicy: {
+      enabled: true
+      days: 30
+    }
+    isVersioningEnabled: true
+  }
+}
+
+resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-04-01' = {
+  parent: hubStorageAccount
+  name: 'default'
+  properties: {
+    shareDeleteRetentionPolicy: {
+      enabled: true
+      days: 30
+    }
+  }
+}
+
 resource hubFileShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-04-01' = {
-  name: '${hubStorageAccount.name}/default/hub-data'
+  parent: fileService
+  name: 'hub-data'
+}
+
+// Azure Files share for the hub's small JSON registries only
+// (jobs/schedules/revocations). Qdrant data never lives here.
+resource hubStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
+  parent: env
+  name: 'hub-data'
+  properties: {
+    azureFile: {
+      accountName: hubStorageAccount.name
+      shareName: hubFileShare.name
+      accessMode: 'ReadWrite'
+      accountKey: hubStorageAccount.listKeys().keys[0].value
+    }
+  }
 }
 
 output environmentId string = env.id
+output hubStorageAccountName string = hubStorageAccount.name

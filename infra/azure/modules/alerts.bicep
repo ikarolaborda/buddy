@@ -146,3 +146,5 @@ resource budget 'Microsoft.Consumption/budgets@2025-04-01' = {
     }
   }
 }
+
+output actionGroupId string = actionGroup.id

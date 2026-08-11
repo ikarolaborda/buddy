@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.44.1.10279",
-      "templateHash": "16193803720107399972"
+      "version": "0.45.15.27210",
+      "templateHash": "11278641454819791364"
     }
   },
   "parameters": {
@@ -13,6 +13,7 @@
       "type": "string",
       "allowedValues": [
         "dev",
+        "credit",
         "prod"
       ],
       "metadata": {
@@ -32,6 +33,13 @@
         "description": "Deploy the workload apps (hub, api, worker, jobs). False provisions core infrastructure only, so images and the Qdrant secret can be created first."
       }
     },
+    "deployBackgroundWorkers": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy work-consuming background workers and schedules. Disable during target staging so a restored outbox cannot be processed before cutover."
+      }
+    },
     "buddyImageTag": {
       "type": "string",
       "defaultValue": "none",
@@ -44,6 +52,13 @@
       "defaultValue": "none",
       "metadata": {
         "description": "Immutable commit-SHA image tag for the memory hub image"
+      }
+    },
+    "embeddingImageTag": {
+      "type": "string",
+      "defaultValue": "none",
+      "metadata": {
+        "description": "Immutable image tag for the MiniLM embedding sidecar"
       }
     },
     "qdrantHost": {
@@ -123,8 +138,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "1047680551077673139"
+              "version": "0.45.15.27210",
+              "templateHash": "9913249437132486076"
             }
           },
           "parameters": {
@@ -252,8 +267,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "10183795166202367106"
+              "version": "0.45.15.27210",
+              "templateHash": "4456552031843697533"
             }
           },
           "parameters": {
@@ -328,8 +343,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "817533747510283035"
+              "version": "0.45.15.27210",
+              "templateHash": "14197562895194451745"
             }
           },
           "parameters": {
@@ -362,6 +377,10 @@
             "registryId": {
               "type": "string",
               "value": "[resourceId('Microsoft.ContainerRegistry/registries', format('acrbuddy{0}{1}', parameters('environment'), uniqueString(resourceGroup().id)))]"
+            },
+            "name": {
+              "type": "string",
+              "value": "[format('acrbuddy{0}{1}', parameters('environment'), uniqueString(resourceGroup().id))]"
             }
           }
         }
@@ -390,8 +409,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "12475439884807569371"
+              "version": "0.45.15.27210",
+              "templateHash": "16211719943699998595"
             }
           },
           "parameters": {
@@ -470,8 +489,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "15637563997583605086"
+              "version": "0.45.15.27210",
+              "templateHash": "4833902803565574570"
             }
           },
           "parameters": {
@@ -569,8 +588,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "14478412382780669933"
+              "version": "0.45.15.27210",
+              "templateHash": "9611575087162622304"
             }
           },
           "parameters": {
@@ -651,7 +670,7 @@
       ]
     },
     {
-      "condition": "[equals(parameters('environment'), 'dev')]",
+      "condition": "[and(parameters('deployWorkloads'), not(equals(parameters('environment'), 'prod')))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "redis-container",
@@ -672,6 +691,9 @@
           },
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.vaultUri.value]"
+          },
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
           }
         },
         "template": {
@@ -680,8 +702,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "14856284260422953238"
+              "version": "0.45.15.27210",
+              "templateHash": "4357711042510312406"
             }
           },
           "parameters": {
@@ -696,7 +718,13 @@
             },
             "keyVaultUri": {
               "type": "string"
+            },
+            "keyVaultName": {
+              "type": "string"
             }
+          },
+          "variables": {
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6"
           },
           "resources": [
             {
@@ -704,6 +732,20 @@
               "apiVersion": "2023-01-31",
               "name": "[format('id-redis-{0}', parameters('environment'))]",
               "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment')))]"
+              ]
             },
             {
               "type": "Microsoft.App/containerApps",
@@ -764,7 +806,8 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment')))]"
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-redis-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             }
           ],
@@ -814,8 +857,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "10985042407099570779"
+              "version": "0.45.15.27210",
+              "templateHash": "17193311466960904451"
             }
           },
           "parameters": {
@@ -859,23 +902,6 @@
               }
             },
             {
-              "type": "Microsoft.App/managedEnvironments/storages",
-              "apiVersion": "2024-03-01",
-              "name": "[format('{0}/{1}', format('cae-buddy-{0}', parameters('environment')), 'hub-data')]",
-              "properties": {
-                "azureFile": {
-                  "accountName": "[format('stbuddyhub{0}', parameters('environment'))]",
-                  "shareName": "hub-data",
-                  "accessMode": "ReadWrite",
-                  "accountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment'))), '2023-04-01').keys[0].value]"
-                }
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.App/managedEnvironments', format('cae-buddy-{0}', parameters('environment')))]",
-                "[resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment')))]"
-              ]
-            },
-            {
               "type": "Microsoft.Storage/storageAccounts",
               "apiVersion": "2023-04-01",
               "name": "[format('stbuddyhub{0}', parameters('environment'))]",
@@ -890,10 +916,61 @@
               }
             },
             {
+              "type": "Microsoft.Storage/storageAccounts/blobServices",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', format('stbuddyhub{0}', parameters('environment')), 'default')]",
+              "properties": {
+                "deleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 30
+                },
+                "containerDeleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 30
+                },
+                "isVersioningEnabled": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Storage/storageAccounts/fileServices",
+              "apiVersion": "2023-04-01",
+              "name": "[format('{0}/{1}', format('stbuddyhub{0}', parameters('environment')), 'default')]",
+              "properties": {
+                "shareDeleteRetentionPolicy": {
+                  "enabled": true,
+                  "days": 30
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment')))]"
+              ]
+            },
+            {
               "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
               "apiVersion": "2023-04-01",
-              "name": "[format('{0}/default/hub-data', format('stbuddyhub{0}', parameters('environment')))]",
+              "name": "[format('{0}/{1}/{2}', format('stbuddyhub{0}', parameters('environment')), 'default', 'hub-data')]",
               "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/fileServices', format('stbuddyhub{0}', parameters('environment')), 'default')]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/managedEnvironments/storages",
+              "apiVersion": "2024-03-01",
+              "name": "[format('{0}/{1}', format('cae-buddy-{0}', parameters('environment')), 'hub-data')]",
+              "properties": {
+                "azureFile": {
+                  "accountName": "[format('stbuddyhub{0}', parameters('environment'))]",
+                  "shareName": "hub-data",
+                  "accessMode": "ReadWrite",
+                  "accountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment'))), '2023-04-01').keys[0].value]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.App/managedEnvironments', format('cae-buddy-{0}', parameters('environment')))]",
+                "[resourceId('Microsoft.Storage/storageAccounts/fileServices/shares', format('stbuddyhub{0}', parameters('environment')), 'default', 'hub-data')]",
                 "[resourceId('Microsoft.Storage/storageAccounts', format('stbuddyhub{0}', parameters('environment')))]"
               ]
             }
@@ -902,6 +979,10 @@
             "environmentId": {
               "type": "string",
               "value": "[resourceId('Microsoft.App/managedEnvironments', format('cae-buddy-{0}', parameters('environment')))]"
+            },
+            "hubStorageAccountName": {
+              "type": "string",
+              "value": "[format('stbuddyhub{0}', parameters('environment'))]"
             }
           }
         }
@@ -934,8 +1015,17 @@
           "acrLoginServer": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
           },
+          "acrName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+          },
           "imageTag": {
             "value": "[parameters('hubImageTag')]"
+          },
+          "embeddingImageTag": {
+            "value": "[parameters('embeddingImageTag')]"
+          },
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
           },
           "qdrantHost": {
             "value": "[parameters('qdrantHost')]"
@@ -956,8 +1046,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "13573499879132759766"
+              "version": "0.45.15.27210",
+              "templateHash": "10340591171406373752"
             }
           },
           "parameters": {
@@ -973,7 +1063,16 @@
             "acrLoginServer": {
               "type": "string"
             },
+            "acrName": {
+              "type": "string"
+            },
             "imageTag": {
+              "type": "string"
+            },
+            "embeddingImageTag": {
+              "type": "string"
+            },
+            "keyVaultName": {
               "type": "string"
             },
             "qdrantHost": {
@@ -990,12 +1089,44 @@
               "type": "securestring"
             }
           },
+          "variables": {
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+            "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+          },
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "[format('id-memory-hub-{0}', parameters('environment'))]",
               "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), variables('acrPull'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPull'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]"
+              ]
             },
             {
               "type": "Microsoft.App/containerApps",
@@ -1131,7 +1262,7 @@
                     },
                     {
                       "name": "minilm-sidecar",
-                      "image": "[format('{0}/minilm-embedding:{1}', parameters('acrLoginServer'), parameters('imageTag'))]",
+                      "image": "[format('{0}/minilm-embedding:{1}', parameters('acrLoginServer'), parameters('embeddingImageTag'))]",
                       "resources": {
                         "cpu": "[json('1.0')]",
                         "memory": "2Gi"
@@ -1148,7 +1279,9 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]"
+                "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), variables('acrPull')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             }
           ],
@@ -1166,7 +1299,8 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', 'acr')]",
-        "[resourceId('Microsoft.Resources/deployments', 'container-apps-environment')]"
+        "[resourceId('Microsoft.Resources/deployments', 'container-apps-environment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'key-vault')]"
       ]
     },
     {
@@ -1192,16 +1326,22 @@
           "acrLoginServer": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
           },
+          "acrName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+          },
           "imageTag": {
             "value": "[parameters('buddyImageTag')]"
           },
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.vaultUri.value]"
           },
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
+          },
           "postgresFqdn": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'postgres'), '2025-04-01').outputs.fqdn.value]"
           },
-          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', 'ca-redis-dev'))]",
+          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', format('ca-redis-{0}', parameters('environment'))))]",
           "redisPort": {
             "value": "[variables('redisPort')]"
           },
@@ -1218,8 +1358,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "2502726512181208878"
+              "version": "0.45.15.27210",
+              "templateHash": "8117277161329225532"
             }
           },
           "parameters": {
@@ -1235,10 +1375,16 @@
             "acrLoginServer": {
               "type": "string"
             },
+            "acrName": {
+              "type": "string"
+            },
             "imageTag": {
               "type": "string"
             },
             "keyVaultUri": {
+              "type": "string"
+            },
+            "keyVaultName": {
               "type": "string"
             },
             "postgresFqdn": {
@@ -1259,12 +1405,44 @@
               "type": "string"
             }
           },
+          "variables": {
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+            "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+          },
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "[format('id-buddy-api-{0}', parameters('environment'))]",
               "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), variables('acrPull'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPull'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+              ]
             },
             {
               "type": "Microsoft.App/containerApps",
@@ -1315,6 +1493,16 @@
                     {
                       "name": "langsmith-api-key",
                       "keyVaultUrl": "[format('{0}secrets/langsmith-api-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "hub-token",
+                      "keyVaultUrl": "[format('{0}secrets/buddy-hub-token', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "openai-key",
+                      "keyVaultUrl": "[format('{0}secrets/openai-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
                     }
                   ]
@@ -1436,7 +1624,19 @@
                           "value": "[parameters('memoryHubInternalUrl')]"
                         },
                         {
+                          "name": "BUDDY_MEMORY_HUB_TOKEN",
+                          "secretRef": "hub-token"
+                        },
+                        {
                           "name": "BUDDY_API_AUTH",
+                          "value": "true"
+                        },
+                        {
+                          "name": "OPENAI_API_KEY",
+                          "secretRef": "openai-key"
+                        },
+                        {
+                          "name": "LANGSMITH_SEND_PROMPTS",
                           "value": "true"
                         }
                       ],
@@ -1463,7 +1663,9 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
+                "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), variables('acrPull')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             }
           ],
@@ -1489,7 +1691,7 @@
       ]
     },
     {
-      "condition": "[parameters('deployWorkloads')]",
+      "condition": "[and(parameters('deployWorkloads'), parameters('deployBackgroundWorkers'))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "buddy-worker",
@@ -1511,16 +1713,22 @@
           "acrLoginServer": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
           },
+          "acrName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+          },
           "imageTag": {
             "value": "[parameters('buddyImageTag')]"
           },
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.vaultUri.value]"
           },
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
+          },
           "postgresFqdn": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'postgres'), '2025-04-01').outputs.fqdn.value]"
           },
-          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', 'ca-redis-dev'))]",
+          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', format('ca-redis-{0}', parameters('environment'))))]",
           "redisPort": {
             "value": "[variables('redisPort')]"
           },
@@ -1537,8 +1745,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "8596577213795662467"
+              "version": "0.45.15.27210",
+              "templateHash": "2884174180906842675"
             }
           },
           "parameters": {
@@ -1554,10 +1762,16 @@
             "acrLoginServer": {
               "type": "string"
             },
+            "acrName": {
+              "type": "string"
+            },
             "imageTag": {
               "type": "string"
             },
             "keyVaultUri": {
+              "type": "string"
+            },
+            "keyVaultName": {
               "type": "string"
             },
             "postgresFqdn": {
@@ -1578,12 +1792,44 @@
               "type": "string"
             }
           },
+          "variables": {
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+            "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+          },
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "[format('id-buddy-worker-{0}', parameters('environment'))]",
               "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), variables('acrPull'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPull'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+              ]
             },
             {
               "type": "Microsoft.App/containerApps",
@@ -1629,6 +1875,21 @@
                     {
                       "name": "langsmith-api-key",
                       "keyVaultUrl": "[format('{0}secrets/langsmith-api-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "openrouter-api-key",
+                      "keyVaultUrl": "[format('{0}secrets/openrouter-api-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "hub-token",
+                      "keyVaultUrl": "[format('{0}secrets/buddy-hub-token', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "openai-key",
+                      "keyVaultUrl": "[format('{0}secrets/openai-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
                     }
                   ]
@@ -1766,7 +2027,11 @@
                         },
                         {
                           "name": "REDIS_QUEUE_RETRY_AFTER",
-                          "value": "240"
+                          "value": "1200"
+                        },
+                        {
+                          "name": "OPENROUTER_API_KEY",
+                          "secretRef": "openrouter-api-key"
                         },
                         {
                           "name": "BUDDY_MEMORY_BACKEND",
@@ -1775,6 +2040,18 @@
                         {
                           "name": "BUDDY_MEMORY_HUB_URL",
                           "value": "[parameters('memoryHubInternalUrl')]"
+                        },
+                        {
+                          "name": "BUDDY_MEMORY_HUB_TOKEN",
+                          "secretRef": "hub-token"
+                        },
+                        {
+                          "name": "OPENAI_API_KEY",
+                          "secretRef": "openai-key"
+                        },
+                        {
+                          "name": "LANGSMITH_SEND_PROMPTS",
+                          "value": "true"
                         }
                       ]
                     }
@@ -1782,7 +2059,9 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
+                "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), variables('acrPull')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             }
           ],
@@ -1826,21 +2105,30 @@
           "acrLoginServer": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
           },
+          "acrName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+          },
           "imageTag": {
             "value": "[parameters('buddyImageTag')]"
           },
           "keyVaultUri": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.vaultUri.value]"
           },
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
+          },
           "postgresFqdn": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'postgres'), '2025-04-01').outputs.fqdn.value]"
           },
-          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', 'ca-redis-dev'))]",
+          "redisHostName": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', format('ca-redis-{0}', parameters('environment'))))]",
           "redisPort": {
             "value": "[variables('redisPort')]"
           },
           "redisUseTls": {
             "value": "[variables('redisTls')]"
+          },
+          "deployOutboxRepair": {
+            "value": "[parameters('deployBackgroundWorkers')]"
           }
         },
         "template": {
@@ -1849,8 +2137,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "9403682524847000541"
+              "version": "0.45.15.27210",
+              "templateHash": "5219682227376335766"
             }
           },
           "parameters": {
@@ -1866,10 +2154,16 @@
             "acrLoginServer": {
               "type": "string"
             },
+            "acrName": {
+              "type": "string"
+            },
             "imageTag": {
               "type": "string"
             },
             "keyVaultUri": {
+              "type": "string"
+            },
+            "keyVaultName": {
               "type": "string"
             },
             "postgresFqdn": {
@@ -1885,9 +2179,15 @@
             "redisUseTls": {
               "type": "bool",
               "defaultValue": true
+            },
+            "deployOutboxRepair": {
+              "type": "bool",
+              "defaultValue": true
             }
           },
           "variables": {
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+            "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
             "commonEnv": [
               {
                 "name": "APP_ENV",
@@ -1957,6 +2257,34 @@
               "apiVersion": "2023-01-31",
               "name": "[format('id-buddy-jobs-{0}', parameters('environment'))]",
               "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+              "name": "[guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('acrPull'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPull'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+              ]
             },
             {
               "type": "Microsoft.App/jobs",
@@ -2029,10 +2357,13 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('acrPull')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             },
             {
+              "condition": "[parameters('deployOutboxRepair')]",
               "type": "Microsoft.App/jobs",
               "apiVersion": "2024-03-01",
               "name": "[format('caj-buddy-outbox-{0}', parameters('environment'))]",
@@ -2104,7 +2435,9 @@
                 }
               },
               "dependsOn": [
-                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                "[extensionResourceId(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('acrPull')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
               ]
             }
           ],
@@ -2125,7 +2458,7 @@
       ]
     },
     {
-      "condition": "[not(equals(parameters('alertEmailAddress'), ''))]",
+      "condition": "[and(and(parameters('deployWorkloads'), parameters('deployBackgroundWorkers')), not(equals(parameters('alertEmailAddress'), '')))]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "alerts",
@@ -2151,8 +2484,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.44.1.10279",
-              "templateHash": "4233524549138266219"
+              "version": "0.45.15.27210",
+              "templateHash": "911914144255806960"
             }
           },
           "parameters": {
@@ -2327,15 +2660,538 @@
                 }
               }
             }
-          ]
+          ],
+          "outputs": {
+            "actionGroupId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/actionGroups', format('ag-buddy-{0}', parameters('environment')))]"
+            }
+          }
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'buddy-api')]",
+        "[resourceId('Microsoft.Resources/deployments', 'buddy-worker')]",
+        "[resourceId('Microsoft.Resources/deployments', 'memory-hub')]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('deployWorkloads'), parameters('deployBackgroundWorkers'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "memory-backup",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "containerAppsEnvironmentId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.environmentId.value]"
+          },
+          "qdrantRestUrl": {
+            "value": "[format('https://{0}:6333', parameters('qdrantHost'))]"
+          },
+          "qdrantApiKeySecretUri": {
+            "value": "[parameters('qdrantApiKeySecretUri')]"
+          },
+          "storageAccountName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.hubStorageAccountName.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "11700669526087853199"
+            }
+          },
+          "parameters": {
+            "environment": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "containerAppsEnvironmentId": {
+              "type": "string"
+            },
+            "qdrantRestUrl": {
+              "type": "string"
+            },
+            "storageAccountName": {
+              "type": "string"
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "0 3 * * *"
+            },
+            "retentionDays": {
+              "type": "string",
+              "defaultValue": "14"
+            },
+            "qdrantApiKeySecretUri": {
+              "type": "securestring"
+            }
+          },
+          "variables": {
+            "$fxv#0": "#!/bin/bash\n# Nightly memory-plane backup: snapshots every Qdrant Cloud collection to\n# blob storage and archives the hub's JSON registries. Runs inside the\n# azure-cli image as a scheduled Container Apps Job with a user-assigned\n# identity (Storage Blob Data Contributor + Key Vault Secrets User).\nset -euo pipefail\n\n: \"${QDRANT_URL:?}\" \"${QDRANT_API_KEY:?}\" \"${STORAGE_ACCOUNT:?}\" \"${AZURE_CLIENT_ID:?}\"\nCONTAINER=\"${BACKUP_CONTAINER:-memory-backups}\"\nRETENTION_DAYS=\"${RETENTION_DAYS:-14}\"\nSTAMP=\"$(date -u +%Y-%m-%dT%H-%M-%SZ)\"\n\naz login --identity --client-id \"$AZURE_CLIENT_ID\" --output none 2>/dev/null \\\n  || az login --identity --username \"$AZURE_CLIENT_ID\" --output none\n\naz storage container create --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --name \"$CONTAINER\" --output none\n\ncollections=$(curl -fsS -H \"api-key: $QDRANT_API_KEY\" \"$QDRANT_URL/collections\" \\\n  | python3 -c \"import json,sys; print('\\n'.join(c['name'] for c in json.load(sys.stdin)['result']['collections']))\")\n\nif [ -z \"$collections\" ]; then\n  echo \"WARNING: no collections found at $QDRANT_URL\" >&2\nfi\n\nfor col in $collections; do\n  snap=$(curl -fsS -X POST -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots\" \\\n    | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['name'])\")\n\n  curl -fsS -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output \"/tmp/$snap\"\n\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"qdrant/$col/$STAMP.snapshot\" --file \"/tmp/$snap\" --output none\n\n  rm -f \"/tmp/$snap\"\n\n  # Server-side snapshots consume cluster disk; keep only the blob copy.\n  curl -fsS -X DELETE -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output /dev/null || true\n\n  echo \"backed up $col -> $CONTAINER/qdrant/$col/$STAMP.snapshot\"\ndone\n\nif [ -d /hub-data ]; then\n  # The azure-cli image ships no tar binary; python is always present.\n  python3 -c \"import tarfile; t = tarfile.open('/tmp/hub-registries.tar.gz', 'w:gz'); t.add('/hub-data', arcname='.'); t.close()\"\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"hub-registries/$STAMP.tar.gz\" --file \"/tmp/hub-registries.tar.gz\" --output none\n  echo \"backed up hub registries -> $CONTAINER/hub-registries/$STAMP.tar.gz\"\nfi\n\ncutoff=$(python3 -c \"from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=$RETENTION_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ'))\")\n\naz storage blob list --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n  --query \"[?properties.creationTime < '$cutoff'].name\" -o tsv \\\n  | while read -r blob; do\n      [ -z \"$blob\" ] && continue\n      az storage blob delete --auth-mode login \\\n        --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n        --name \"$blob\" --output none\n      echo \"pruned $blob\"\n    done\n\necho \"memory backup complete: $STAMP\"\n",
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
+            "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[format('id-memory-backup-{0}', parameters('environment'))]",
+              "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName'))]",
+              "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), variables('storageBlobDataContributor'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributor'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', format('kv-buddy-{0}', parameters('environment')))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', format('kv-buddy-{0}', parameters('environment'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), variables('keyVaultSecretsUser'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('keyVaultSecretsUser'))]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').principalId]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[format('caj-buddy-memory-backup-{0}', parameters('environment'))]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('containerAppsEnvironmentId')]",
+                "configuration": {
+                  "triggerType": "Schedule",
+                  "replicaTimeout": 1800,
+                  "replicaRetryLimit": 1,
+                  "scheduleTriggerConfig": {
+                    "cronExpression": "[parameters('cronExpression')]",
+                    "parallelism": 1,
+                    "replicaCompletionCount": 1
+                  },
+                  "secrets": [
+                    {
+                      "name": "qdrant-api-key",
+                      "keyVaultUrl": "[parameters('qdrantApiKeySecretUri')]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "memory-backup",
+                      "image": "mcr.microsoft.com/azure-cli:latest",
+                      "command": [
+                        "/bin/bash",
+                        "-c",
+                        "[variables('$fxv#0')]"
+                      ],
+                      "resources": {
+                        "cpu": "[json('0.5')]",
+                        "memory": "1Gi"
+                      },
+                      "env": [
+                        {
+                          "name": "QDRANT_URL",
+                          "value": "[parameters('qdrantRestUrl')]"
+                        },
+                        {
+                          "name": "QDRANT_API_KEY",
+                          "secretRef": "qdrant-api-key"
+                        },
+                        {
+                          "name": "STORAGE_ACCOUNT",
+                          "value": "[parameters('storageAccountName')]"
+                        },
+                        {
+                          "name": "RETENTION_DAYS",
+                          "value": "[parameters('retentionDays')]"
+                        },
+                        {
+                          "name": "AZURE_CLIENT_ID",
+                          "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').clientId]"
+                        }
+                      ],
+                      "volumeMounts": [
+                        {
+                          "volumeName": "hub-data",
+                          "mountPath": "/hub-data"
+                        }
+                      ]
+                    }
+                  ],
+                  "volumes": [
+                    {
+                      "name": "hub-data",
+                      "storageType": "AzureFile",
+                      "storageName": "hub-data"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccountName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), variables('storageBlobDataContributor')))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))]",
+                "[extensionResourceId(resourceId('Microsoft.KeyVault/vaults', format('kv-buddy-{0}', parameters('environment'))), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.KeyVault/vaults', format('kv-buddy-{0}', parameters('environment'))), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), variables('keyVaultSecretsUser')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "jobName": {
+              "type": "string",
+              "value": "[format('caj-buddy-memory-backup-{0}', parameters('environment'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'container-apps-environment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'memory-hub')]"
+      ]
+    },
+    {
+      "condition": "[and(and(parameters('deployWorkloads'), parameters('deployBackgroundWorkers')), not(equals(parameters('alertEmailAddress'), '')))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "feedback-health",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "containerAppsEnvironmentId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.environmentId.value]"
+          },
+          "acrLoginServer": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.loginServer.value]"
+          },
+          "imageTag": {
+            "value": "[parameters('buddyImageTag')]"
+          },
+          "keyVaultUri": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.vaultUri.value]"
+          },
+          "postgresFqdn": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'postgres'), '2025-04-01').outputs.fqdn.value]"
+          },
+          "redisHost": "[if(equals(parameters('environment'), 'prod'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'redis'), '2025-04-01').outputs.hostName.value), createObject('value', format('ca-redis-{0}', parameters('environment'))))]",
+          "redisPort": {
+            "value": "[variables('redisPort')]"
+          },
+          "logAnalyticsWorkspaceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'observability'), '2025-04-01').outputs.logAnalyticsWorkspaceId.value]"
+          },
+          "actionGroupId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'alerts'), '2025-04-01').outputs.actionGroupId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.45.15.27210",
+              "templateHash": "3025308445269915833"
+            }
+          },
+          "parameters": {
+            "environment": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]"
+            },
+            "containerAppsEnvironmentId": {
+              "type": "string"
+            },
+            "acrLoginServer": {
+              "type": "string"
+            },
+            "imageTag": {
+              "type": "string"
+            },
+            "keyVaultUri": {
+              "type": "string"
+            },
+            "postgresFqdn": {
+              "type": "string"
+            },
+            "redisHost": {
+              "type": "string"
+            },
+            "redisPort": {
+              "type": "string",
+              "defaultValue": "6379"
+            },
+            "cronExpression": {
+              "type": "string",
+              "defaultValue": "30 6 * * *"
+            },
+            "logAnalyticsWorkspaceId": {
+              "type": "string"
+            },
+            "actionGroupId": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/jobs",
+              "apiVersion": "2024-03-01",
+              "name": "[format('caj-buddy-feedback-health-{0}', parameters('environment'))]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment'))))]": {}
+                }
+              },
+              "properties": {
+                "environmentId": "[parameters('containerAppsEnvironmentId')]",
+                "configuration": {
+                  "triggerType": "Schedule",
+                  "replicaTimeout": 300,
+                  "replicaRetryLimit": 1,
+                  "scheduleTriggerConfig": {
+                    "cronExpression": "[parameters('cronExpression')]",
+                    "parallelism": 1,
+                    "replicaCompletionCount": 1
+                  },
+                  "registries": [
+                    {
+                      "server": "[parameters('acrLoginServer')]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                    }
+                  ],
+                  "secrets": [
+                    {
+                      "name": "app-key",
+                      "keyVaultUrl": "[format('{0}secrets/buddy-app-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "db-password",
+                      "keyVaultUrl": "[format('{0}secrets/pg-admin-password', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "api-pepper",
+                      "keyVaultUrl": "[format('{0}secrets/buddy-api-pepper', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                    },
+                    {
+                      "name": "redis-password",
+                      "keyVaultUrl": "[format('{0}secrets/redis-access-key', parameters('keyVaultUri'))]",
+                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-jobs-{0}', parameters('environment')))]"
+                    }
+                  ]
+                },
+                "template": {
+                  "containers": [
+                    {
+                      "name": "feedback-health",
+                      "image": "[format('{0}/buddy:{1}', parameters('acrLoginServer'), parameters('imageTag'))]",
+                      "command": [
+                        "php",
+                        "artisan",
+                        "buddy:feedback-health"
+                      ],
+                      "resources": {
+                        "cpu": "[json('0.25')]",
+                        "memory": "0.5Gi"
+                      },
+                      "env": [
+                        {
+                          "name": "APP_ENV",
+                          "value": "production"
+                        },
+                        {
+                          "name": "APP_KEY",
+                          "secretRef": "app-key"
+                        },
+                        {
+                          "name": "LOG_CHANNEL",
+                          "value": "stderr"
+                        },
+                        {
+                          "name": "DB_CONNECTION",
+                          "value": "pgsql"
+                        },
+                        {
+                          "name": "DB_HOST",
+                          "value": "[parameters('postgresFqdn')]"
+                        },
+                        {
+                          "name": "DB_PORT",
+                          "value": "5432"
+                        },
+                        {
+                          "name": "DB_DATABASE",
+                          "value": "buddy"
+                        },
+                        {
+                          "name": "DB_USERNAME",
+                          "value": "buddy_admin"
+                        },
+                        {
+                          "name": "DB_PASSWORD",
+                          "secretRef": "db-password"
+                        },
+                        {
+                          "name": "QUEUE_CONNECTION",
+                          "value": "redis"
+                        },
+                        {
+                          "name": "REDIS_CLIENT",
+                          "value": "phpredis"
+                        },
+                        {
+                          "name": "REDIS_HOST",
+                          "value": "[parameters('redisHost')]"
+                        },
+                        {
+                          "name": "REDIS_PORT",
+                          "value": "[parameters('redisPort')]"
+                        },
+                        {
+                          "name": "REDIS_PASSWORD",
+                          "secretRef": "redis-password"
+                        },
+                        {
+                          "name": "BUDDY_API_KEY_PEPPER",
+                          "secretRef": "api-pepper"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Insights/scheduledQueryRules",
+              "apiVersion": "2023-03-15-preview",
+              "name": "[format('alert-buddy-feedback-degraded-{0}', parameters('environment'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "displayName": "[format('Buddy feedback degradation ({0})', parameters('environment'))]",
+                "description": "buddy:feedback-health reported BUDDY_FEEDBACK_DEGRADED within the last day.",
+                "severity": 2,
+                "enabled": true,
+                "evaluationFrequency": "PT1H",
+                "windowSize": "P1D",
+                "scopes": [
+                  "[parameters('logAnalyticsWorkspaceId')]"
+                ],
+                "autoMitigate": true,
+                "criteria": {
+                  "allOf": [
+                    {
+                      "query": "ContainerAppConsoleLogs_CL | where Log_s contains \"BUDDY_FEEDBACK_DEGRADED\"",
+                      "timeAggregation": "Count",
+                      "operator": "GreaterThan",
+                      "threshold": 0
+                    }
+                  ]
+                },
+                "actions": {
+                  "actionGroups": [
+                    "[parameters('actionGroupId')]"
+                  ]
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "jobName": {
+              "type": "string",
+              "value": "[format('caj-buddy-feedback-health-{0}', parameters('environment'))]"
+            },
+            "alertName": {
+              "type": "string",
+              "value": "[format('alert-buddy-feedback-degraded-{0}', parameters('environment'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'acr')]",
+        "[resourceId('Microsoft.Resources/deployments', 'alerts')]",
+        "[resourceId('Microsoft.Resources/deployments', 'container-apps-environment')]",
+        "[resourceId('Microsoft.Resources/deployments', 'jobs')]",
+        "[resourceId('Microsoft.Resources/deployments', 'key-vault')]",
+        "[resourceId('Microsoft.Resources/deployments', 'observability')]",
+        "[resourceId('Microsoft.Resources/deployments', 'postgres')]",
+        "[resourceId('Microsoft.Resources/deployments', 'redis')]"
+      ]
     }
   ],
   "outputs": {
     "apiUrl": {
       "type": "string",
       "value": "[if(parameters('deployWorkloads'), reference(resourceId('Microsoft.Resources/deployments', 'buddy-api'), '2025-04-01').outputs.apiUrl.value, '')]"
+    },
+    "acrName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2025-04-01').outputs.name.value]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'key-vault'), '2025-04-01').outputs.name.value]"
+    },
+    "hubStorageAccountName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.hubStorageAccountName.value]"
     }
   }
 }
