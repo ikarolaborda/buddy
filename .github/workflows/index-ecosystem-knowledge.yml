@@ -1,0 +1,138 @@
+name: Index ecosystem knowledge
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Algolia index prefix
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecosystem-knowledge-${{ inputs.environment || vars.ALGOLIA_INDEX_ENVIRONMENT || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    env:
+      ALGOLIA_APPLICATION_ID: ${{ secrets.ALGOLIA_APPLICATION_ID }}
+      ALGOLIA_WRITE_API_KEY: ${{ secrets.ALGOLIA_WRITE_API_KEY }}
+      BUDDY_ALGOLIA_INDEX_ENV: ${{ inputs.environment || vars.ALGOLIA_INDEX_ENVIRONMENT || 'staging' }}
+
+    steps:
+      - name: Checkout Buddy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: sources/buddy
+          persist-credentials: false
+
+      - name: Checkout Aerolambda site
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aerolambda/aerolambda-site
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/aerolambda-site
+          persist-credentials: false
+
+      - name: Checkout Qdrant memory
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikarolaborda/qdrant-memory
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/qdrant-memory
+          persist-credentials: false
+
+      - name: Checkout Theravista API
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aerolambda/theravista-api
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/theravista-api
+          persist-credentials: false
+
+      - name: Checkout Theravista web
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aerolambda/theravista-web
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/theravista-web
+          persist-credentials: false
+
+      - name: Checkout Theravista iOS
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aerolambda/theravista-ios
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/theravista-ios
+          persist-credentials: false
+
+      - name: Checkout Theravista Android
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: aerolambda/theravista-android
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/theravista-android
+          persist-credentials: false
+
+      - name: Checkout Falinha
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikarolaborda/falinha
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/falinha
+          persist-credentials: false
+
+      - name: Checkout Ritmovida
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikarolaborda/ritmovida
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/ritmovida
+          persist-credentials: false
+
+      - name: Checkout Heartbeat app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ikarolaborda/heartbeatapp
+          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          path: sources/heartbeatapp
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@b604ade2a87db23f8871b7182e69ec5e75effb45 # v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring
+          coverage: none
+
+      - name: Install indexer dependencies
+        working-directory: sources/buddy
+        run: composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
+
+      - name: Validate extraction without writes
+        working-directory: sources/buddy
+        run: |
+          php artisan buddy:index-ecosystem-knowledge aerolambda aerolambda-site=../aerolambda-site --dry-run
+          php artisan buddy:index-ecosystem-knowledge buddy buddy=. qdrant-memory=../qdrant-memory --dry-run
+          php artisan buddy:index-ecosystem-knowledge theravista theravista-api=../theravista-api theravista-web=../theravista-web theravista-ios=../theravista-ios theravista-android=../theravista-android --dry-run
+          php artisan buddy:index-ecosystem-knowledge falinha falinha=../falinha --dry-run
+          php artisan buddy:index-ecosystem-knowledge ritmovida ritmovida=../ritmovida heartbeatapp=../heartbeatapp --dry-run
+
+      - name: Atomically publish product indices
+        working-directory: sources/buddy
+        run: |
+          php artisan buddy:index-ecosystem-knowledge aerolambda aerolambda-site=../aerolambda-site
+          php artisan buddy:index-ecosystem-knowledge buddy buddy=. qdrant-memory=../qdrant-memory
+          php artisan buddy:index-ecosystem-knowledge theravista theravista-api=../theravista-api theravista-web=../theravista-web theravista-ios=../theravista-ios theravista-android=../theravista-android
+          php artisan buddy:index-ecosystem-knowledge falinha falinha=../falinha
+          php artisan buddy:index-ecosystem-knowledge ritmovida ritmovida=../ritmovida heartbeatapp=../heartbeatapp

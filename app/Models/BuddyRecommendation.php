@@ -19,6 +19,7 @@ class BuddyRecommendation extends Model
         'risks',
         'next_actions',
         'memory_hits',
+        'knowledge_hits',
         'refinement',
         'council',
     ];
@@ -34,6 +35,7 @@ class BuddyRecommendation extends Model
             'risks' => 'array',
             'next_actions' => 'array',
             'memory_hits' => 'array',
+            'knowledge_hits' => 'array',
             'refinement' => 'array',
             'council' => 'array',
         ];

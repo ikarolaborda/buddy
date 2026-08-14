@@ -24,6 +24,7 @@ class BuddyRecommendationResource extends JsonResource
             'risks' => $this->risks ?? [],
             'next_actions' => $this->next_actions ?? [],
             'memory_hits' => $this->memory_hits ?? [],
+            'knowledge_hits' => $this->knowledge_hits ?? [],
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

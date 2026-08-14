@@ -271,6 +271,7 @@ class RemoteMcpHandler
         return $this->toolResult($id, [
             'task_id' => $task->ulid,
             'status' => $task->status->value,
+            'knowledge_context_status' => $task->knowledge_context_status,
             'close_protocol' => UsageInstructions::CLOSE_PROTOCOL,
         ]);
     }
@@ -303,6 +304,7 @@ class RemoteMcpHandler
                 'risks' => $recommendation->risks,
                 'next_actions' => $recommendation->next_actions,
                 'memory_hits' => $recommendation->memory_hits,
+                'knowledge_hits' => $recommendation->knowledge_hits,
             ],
             'council_eligible' => app(CouncilGate::class)
                 ->evaluate($task, null, null)['allowed'],

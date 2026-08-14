@@ -13,6 +13,7 @@ readonly class EvaluationResult
      * @param  array<int, string>  $risks
      * @param  array<int, string>  $nextActions
      * @param  array<int, array<string, mixed>>  $memoryHits
+     * @param  array<int, array<string, mixed>>  $knowledgeHits
      */
     public function __construct(
         public bool $accepted,
@@ -24,6 +25,7 @@ readonly class EvaluationResult
         public array $risks = [],
         public array $nextActions = [],
         public array $memoryHits = [],
+        public array $knowledgeHits = [],
     ) {}
 
     /**
@@ -41,6 +43,7 @@ readonly class EvaluationResult
             risks: $data['risks'] ?? [],
             nextActions: $data['next_actions'] ?? [],
             memoryHits: $data['memory_hits'] ?? [],
+            knowledgeHits: $data['knowledge_hits'] ?? [],
         );
     }
 
@@ -59,6 +62,7 @@ readonly class EvaluationResult
             'risks' => $this->risks,
             'next_actions' => $this->nextActions,
             'memory_hits' => $this->memoryHits,
+            'knowledge_hits' => $this->knowledgeHits,
         ];
     }
 }

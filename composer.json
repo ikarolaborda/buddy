@@ -6,6 +6,7 @@
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
+        "algolia/algoliasearch-client-php": "^4.46",
         "php": "^8.5",
         "laravel/ai": "^0.3.2",
         "laravel/framework": "^13.0",

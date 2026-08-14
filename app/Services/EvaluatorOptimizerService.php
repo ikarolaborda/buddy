@@ -35,11 +35,12 @@ class EvaluatorOptimizerService
         protected TaskStateService $state,
         protected AgentProfileResolver $profiles,
         protected LangSmithTracer $tracer,
+        protected OutboxPublisher $outbox,
     ) {}
 
     public function createTask(ProblemPacket $packet, ?int $apiClientId = null): BuddyTask
     {
-        return BuddyTask::create([
+        $task = BuddyTask::create([
             'api_client_id' => $apiClientId,
             'source_agent' => $packet->sourceAgent,
             'repo' => $packet->repo,
@@ -51,13 +52,20 @@ class EvaluatorOptimizerService
             'requested_outcome' => $packet->requestedOutcome,
             'status' => TaskStatus::Pending,
             'attempt_count' => count($packet->attempts),
+            'knowledge_context_status' => config('buddy.knowledge.prefetch_enabled') ? 'pending' : 'not_requested',
         ]);
+
+        if (config('buddy.knowledge.prefetch_enabled')) {
+            $this->outbox->appendKnowledgePrefetchRequested($task);
+        }
+
+        return $task;
     }
 
     public function evaluate(BuddyTask $task): EvaluationResult
     {
-        return $this->executeRun($task, 'evaluation', function (BuddyTask $task, BuddyRun $run) {
-            $agent = new EvaluatorOptimizerAgent($task);
+        return $this->executeRun($task, 'evaluation', function (BuddyTask $task, BuddyRun $run, MemorySearchPage $memoryPage) {
+            $agent = new EvaluatorOptimizerAgent($task, $memoryPage);
             $this->recordRunConfiguration($run, EvaluatorOptimizerAgent::AGENT_KEY, $agent->promptBundle()->contentHash, $agent->promptBundle()->moduleIds);
 
             $response = $agent->prompt($agent->buildPrompt());
@@ -72,6 +80,7 @@ class EvaluatorOptimizerService
                 'risks' => $response['risks'] ?? [],
                 'next_actions' => $response['next_actions'] ?? [],
                 'memory_hits' => $response['memory_hits'] ?? [],
+                'knowledge_hits' => $this->resolveKnowledgeHits($task, $response['knowledge_hits'] ?? []),
             ]);
 
             return [$result, $result, null, $response->usage->toArray()];
@@ -80,8 +89,8 @@ class EvaluatorOptimizerService
 
     public function refine(BuddyTask $task): RefinementResult
     {
-        return $this->executeRun($task, 'refinement', function (BuddyTask $task, BuddyRun $run) {
-            $agent = new PromptRefinementAgent($task);
+        return $this->executeRun($task, 'refinement', function (BuddyTask $task, BuddyRun $run, MemorySearchPage $memoryPage) {
+            $agent = new PromptRefinementAgent($task, $memoryPage);
             $this->recordRunConfiguration($run, PromptRefinementAgent::AGENT_KEY, $agent->promptBundle()->contentHash, $agent->promptBundle()->moduleIds);
 
             $response = $agent->prompt($agent->buildPrompt());
@@ -100,6 +109,7 @@ class EvaluatorOptimizerService
                 'missing_information' => $response['missing_information'] ?? [],
                 'verification_plan' => $response['verification_plan'] ?? [],
                 'memory_hits' => $response['memory_hits'] ?? [],
+                'knowledge_hits' => $this->resolveKnowledgeHits($task, $response['knowledge_hits'] ?? []),
             ]);
 
             return [$result, $this->refinementToEvaluation($result), $result->toArray(), $response->usage->toArray()];
@@ -279,6 +289,7 @@ class EvaluatorOptimizerService
             risks: $result->risks,
             nextActions: $result->recommendedToolSequence,
             memoryHits: $result->memoryHits,
+            knowledgeHits: $result->knowledgeHits,
         );
     }
 
@@ -359,6 +370,7 @@ class EvaluatorOptimizerService
             'risks' => $result->risks,
             'next_actions' => $result->nextActions,
             'memory_hits' => $result->memoryHits,
+            'knowledge_hits' => $result->knowledgeHits,
             'refinement' => $refinementPayload,
             'council' => $councilPayload,
         ]);
@@ -378,8 +390,57 @@ class EvaluatorOptimizerService
                 'memory_backend' => $memoryPage->backend,
                 'memory_degraded' => $memoryPage->degraded,
                 'memory_degraded_reason' => $memoryPage->degradedReason,
+                'knowledge_context_status' => $task->knowledge_context_status,
+                'knowledge_context_hash' => $task->knowledge_context_hash,
+                'knowledge_hits_count' => count($result->knowledgeHits),
+                'knowledge_record_ids' => array_column($result->knowledgeHits, 'record_id'),
             ],
         ]);
+    }
+
+    /**
+     * Retain only model citations that resolve to the immutable snapshot supplied to the agent.
+     *
+     * @param  array<int, mixed>  $citations
+     * @return array<int, array<string, mixed>>
+     */
+    protected function resolveKnowledgeHits(BuddyTask $task, array $citations): array
+    {
+        if ($task->knowledge_context_status !== 'ready' || ! is_array($task->knowledge_context)) {
+            return [];
+        }
+
+        $citedIds = collect($citations)
+            ->filter(fn (mixed $citation): bool => is_string($citation) || is_array($citation))
+            ->map(function (mixed $citation): string {
+                if (is_array($citation)) {
+                    return (string) ($citation['record_id'] ?? $citation['objectID'] ?? '');
+                }
+
+                return (string) $citation;
+            });
+
+        return collect($task->knowledge_context)
+            ->filter(function (mixed $hit) use ($citedIds): bool {
+                if (! is_array($hit) || empty($hit['record_id'])) {
+                    return false;
+                }
+
+                return $citedIds->contains(
+                    fn (string $citation): bool => $citation === $hit['record_id']
+                        || str_contains($citation, (string) $hit['record_id']),
+                );
+            })
+            ->map(fn (array $hit): array => [
+                'record_id' => (string) $hit['record_id'],
+                'index' => (string) ($hit['index'] ?? ''),
+                'source_path' => (string) ($hit['source_path'] ?? ''),
+                'source_revision' => (string) ($hit['source_revision'] ?? ''),
+                'source_url' => $hit['source_url'] ?? null,
+                'snippet_hash' => (string) ($hit['snippet_hash'] ?? ''),
+            ])
+            ->values()
+            ->all();
     }
 
     protected function storeLearnings(BuddyTask $task, string $summary): void

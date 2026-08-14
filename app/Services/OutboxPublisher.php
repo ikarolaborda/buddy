@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\CouncilDeliberateJob;
 use App\Jobs\EvaluateTaskJob;
+use App\Jobs\PrefetchEcosystemKnowledgeJob;
 use App\Models\BuddyTask;
 use App\Models\OutboxMessage;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -12,6 +13,15 @@ use Illuminate\Support\Facades\Log;
 
 class OutboxPublisher
 {
+    public function appendKnowledgePrefetchRequested(BuddyTask $task): ?OutboxMessage
+    {
+        return $this->append(
+            topic: 'buddy.knowledge.prefetch.requested',
+            messageKey: $task->ulid,
+            payload: ['task_ulid' => $task->ulid],
+        );
+    }
+
     /*
      * Append inside the caller's transaction, then publish after commit.
      * The immediate dispatch is the fast path; the relay command is the
@@ -20,14 +30,26 @@ class OutboxPublisher
      */
     public function appendTaskSubmitted(BuddyTask $task): ?OutboxMessage
     {
+        return $this->append(
+            topic: 'buddy.task.submitted',
+            messageKey: $task->ulid.':'.$task->operation,
+            payload: [
+                'task_ulid' => $task->ulid,
+                'operation' => $task->operation,
+            ],
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function append(string $topic, string $messageKey, array $payload): ?OutboxMessage
+    {
         try {
             $message = OutboxMessage::create([
-                'topic' => 'buddy.task.submitted',
-                'message_key' => $task->ulid.':'.$task->operation,
-                'payload' => [
-                    'task_ulid' => $task->ulid,
-                    'operation' => $task->operation,
-                ],
+                'topic' => $topic,
+                'message_key' => $messageKey,
+                'payload' => $payload,
                 'available_at' => now(),
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -83,6 +105,12 @@ class OutboxPublisher
             ->first();
 
         if ($task === null || $task->isTerminal()) {
+            return;
+        }
+
+        if ($message->topic === 'buddy.knowledge.prefetch.requested') {
+            PrefetchEcosystemKnowledgeJob::dispatch($task);
+
             return;
         }
 

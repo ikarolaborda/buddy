@@ -51,6 +51,7 @@ class GetRecommendationTool extends BaseMcpTool
                 'risks' => $existing->risks ?? [],
                 'next_actions' => $existing->next_actions ?? [],
                 'memory_hits' => $existing->memory_hits ?? [],
+                'knowledge_hits' => $existing->knowledge_hits ?? [],
             ], JSON_THROW_ON_ERROR));
         }
 

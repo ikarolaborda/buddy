@@ -72,6 +72,7 @@ class RefinePromptTool extends BaseMcpTool
             'missing_information' => $result->missingInformation,
             'verification_plan' => $result->verificationPlan,
             'memory_hits' => $result->memoryHits,
+            'knowledge_hits' => $result->knowledgeHits,
         ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
     }
 

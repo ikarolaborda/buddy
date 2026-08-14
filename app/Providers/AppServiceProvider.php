@@ -3,9 +3,12 @@
 namespace App\Providers;
 
 use App\Ai\Prompting\PromptRegistry;
+use App\Contracts\EcosystemKnowledgeGateway;
 use App\Contracts\MemoryGateway;
 use App\Enums\MemoryBackend;
 use App\Services\EvaluatorOptimizerService;
+use App\Services\Knowledge\AlgoliaEcosystemKnowledgeGateway;
+use App\Services\Knowledge\NullEcosystemKnowledgeGateway;
 use App\Services\Memory\HubMemoryGateway;
 use App\Services\Memory\LegacyQdrantMemoryGateway;
 use App\Services\Memory\ShadowMemoryGateway;
@@ -20,6 +23,16 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(QdrantMemoryService::class);
+
+        $this->app->singleton(EcosystemKnowledgeGateway::class, function ($app) {
+            $configured = config('buddy.knowledge.driver') === 'algolia'
+                && config('buddy.knowledge.algolia.application_id') !== ''
+                && config('buddy.knowledge.algolia.search_key') !== '';
+
+            return $configured
+                ? $app->make(AlgoliaEcosystemKnowledgeGateway::class)
+                : $app->make(NullEcosystemKnowledgeGateway::class);
+        });
         $this->app->singleton(EvaluatorOptimizerService::class);
         $this->app->singleton(PromptRegistry::class);
 

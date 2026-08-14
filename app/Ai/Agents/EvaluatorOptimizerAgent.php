@@ -6,18 +6,17 @@ use App\Ai\Prompting\AgentProfileResolver;
 use App\Ai\Prompting\ContextEnvelope;
 use App\Ai\Prompting\PromptBundle;
 use App\Ai\Prompting\PromptCompiler;
-use App\Ai\Tools\SearchMemoryTool;
+use App\DTOs\MemorySearchPage;
 use App\Models\BuddyTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
-use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Promptable;
 use Stringable;
 
 #[MaxSteps(10)]
-class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
+class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput
 {
     use Promptable;
 
@@ -27,6 +26,7 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
 
     public function __construct(
         protected BuddyTask $task,
+        protected ?MemorySearchPage $memoryPage = null,
     ) {}
 
     public function instructions(): Stringable|string
@@ -71,13 +71,6 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
             ->resolve(self::AGENT_KEY, $this->task->problem_type);
     }
 
-    public function tools(): iterable
-    {
-        return [
-            new SearchMemoryTool,
-        ];
-    }
-
     public function schema(JsonSchema $schema): array
     {
         return [
@@ -111,9 +104,12 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
                 ->items($schema->string())
                 ->required(),
             'memory_hits' => $schema->array()
-                ->description('Summaries of relevant past episodes found in memory, including memory IDs.')
+                ->description('Qdrant memory IDs from the supplied grounding context that informed the result.')
                 ->items($schema->string())
                 ->required(),
+            'knowledge_hits' => $schema->array()
+                ->description('Algolia record IDs from the supplied grounding context that informed the result.')
+                ->items($schema->string()),
         ];
     }
 
@@ -122,8 +118,10 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput, HasTools
         return app(ContextEnvelope::class)->forTask(
             $this->task,
             'Problem Packet',
-            'Search your memory for similar past problems. Then evaluate the problem and '
-            .'return a structured recommendation. Prefer concrete, actionable plans.',
+            'Use the supplied grounding snapshot when relevant; do not perform another memory search. '
+            .'Then evaluate the problem and return a structured recommendation. Cite the exact record '
+            .'or memory IDs you relied on and prefer concrete, actionable plans.',
+            $this->memoryPage,
         );
     }
 }

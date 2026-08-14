@@ -91,6 +91,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Ecosystem Knowledge
+    |--------------------------------------------------------------------------
+    |
+    | Algolia is a freshness-oriented knowledge plane for repository contracts,
+    | documentation, and symbols. It never replaces governed Qdrant memory and
+    | is never queried from the MCP or evaluation hot paths. A background job
+    | stores a bounded snapshot on the task before evaluation starts.
+    |
+    */
+
+    'knowledge' => [
+        'prefetch_enabled' => (bool) env('BUDDY_ALGOLIA_PREFETCH_ENABLED', false),
+        'context_enabled' => (bool) env('BUDDY_ALGOLIA_CONTEXT_ENABLED', false),
+        'driver' => env('BUDDY_KNOWLEDGE_DRIVER', 'null'),
+        'environment' => env('BUDDY_ALGOLIA_INDEX_ENV', 'staging'),
+        'max_hits' => (int) env('BUDDY_ALGOLIA_MAX_HITS', 6),
+        'max_snippet_chars' => (int) env('BUDDY_ALGOLIA_MAX_SNIPPET_CHARS', 800),
+        'max_context_chars' => (int) env('BUDDY_GROUNDING_CONTEXT_CHARS', 4000),
+        'algolia' => [
+            'application_id' => env('ALGOLIA_APPLICATION_ID', ''),
+            'search_key' => env('ALGOLIA_SEARCH_API_KEY', ''),
+            'write_key' => env('ALGOLIA_WRITE_API_KEY', ''),
+            'connect_timeout' => (float) env('BUDDY_ALGOLIA_CONNECT_TIMEOUT', 0.2),
+            'timeout' => (float) env('BUDDY_ALGOLIA_TIMEOUT', 0.8),
+        ],
+        'products' => [
+            'aerolambda' => 'aerolambda',
+            'buddy' => 'buddy',
+            'theravista' => 'theravista',
+            'falinha' => 'falinha',
+            'ritmovida' => 'ritmovida',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Timeout Ordering
     |--------------------------------------------------------------------------
     |

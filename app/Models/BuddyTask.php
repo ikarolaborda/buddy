@@ -28,6 +28,11 @@ class BuddyTask extends Model
         'requested_outcome',
         'status',
         'attempt_count',
+        'knowledge_context',
+        'knowledge_context_status',
+        'knowledge_context_hash',
+        'knowledge_context_fetched_at',
+        'knowledge_context_error',
     ];
 
     protected function casts(): array
@@ -39,6 +44,8 @@ class BuddyTask extends Model
             'evidence' => 'array',
             'lease_expires_at' => 'datetime',
             'heartbeat_at' => 'datetime',
+            'knowledge_context' => 'array',
+            'knowledge_context_fetched_at' => 'datetime',
         ];
     }
 

@@ -14,6 +14,7 @@ readonly class RefinementResult
      * @param  array<int, string>  $missingInformation
      * @param  array<int, string>  $verificationPlan
      * @param  array<int, string>  $memoryHits
+     * @param  array<int, array<string, mixed>>  $knowledgeHits
      */
     public function __construct(
         public bool $accepted,
@@ -29,6 +30,7 @@ readonly class RefinementResult
         public array $missingInformation = [],
         public array $verificationPlan = [],
         public array $memoryHits = [],
+        public array $knowledgeHits = [],
     ) {}
 
     /**
@@ -50,6 +52,7 @@ readonly class RefinementResult
             missingInformation: $data['missing_information'] ?? [],
             verificationPlan: $data['verification_plan'] ?? [],
             memoryHits: $data['memory_hits'] ?? [],
+            knowledgeHits: $data['knowledge_hits'] ?? [],
         );
     }
 
@@ -72,6 +75,7 @@ readonly class RefinementResult
             'missing_information' => $this->missingInformation,
             'verification_plan' => $this->verificationPlan,
             'memory_hits' => $this->memoryHits,
+            'knowledge_hits' => $this->knowledgeHits,
         ];
     }
 }

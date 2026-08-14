@@ -6,18 +6,17 @@ use App\Ai\Prompting\AgentProfileResolver;
 use App\Ai\Prompting\ContextEnvelope;
 use App\Ai\Prompting\PromptBundle;
 use App\Ai\Prompting\PromptCompiler;
-use App\Ai\Tools\SearchMemoryTool;
+use App\DTOs\MemorySearchPage;
 use App\Models\BuddyTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
-use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Promptable;
 use Stringable;
 
 #[MaxSteps(10)]
-class PromptRefinementAgent implements Agent, HasStructuredOutput, HasTools
+class PromptRefinementAgent implements Agent, HasStructuredOutput
 {
     use Promptable;
 
@@ -27,6 +26,7 @@ class PromptRefinementAgent implements Agent, HasStructuredOutput, HasTools
 
     public function __construct(
         protected BuddyTask $task,
+        protected ?MemorySearchPage $memoryPage = null,
     ) {}
 
     public function instructions(): Stringable|string
@@ -53,13 +53,6 @@ class PromptRefinementAgent implements Agent, HasStructuredOutput, HasTools
     public function timeout(): int
     {
         return app(AgentProfileResolver::class)->resolve(self::AGENT_KEY)['timeout'];
-    }
-
-    public function tools(): iterable
-    {
-        return [
-            new SearchMemoryTool,
-        ];
     }
 
     public function schema(JsonSchema $schema): array
@@ -108,9 +101,12 @@ class PromptRefinementAgent implements Agent, HasStructuredOutput, HasTools
                 ->items($schema->string())
                 ->required(),
             'memory_hits' => $schema->array()
-                ->description('Summaries of relevant past episodes found in memory, including memory IDs.')
+                ->description('Qdrant memory IDs from the supplied grounding context that informed the result.')
                 ->items($schema->string())
                 ->required(),
+            'knowledge_hits' => $schema->array()
+                ->description('Algolia record IDs from the supplied grounding context that informed the refinement.')
+                ->items($schema->string()),
         ];
     }
 
@@ -119,8 +115,10 @@ class PromptRefinementAgent implements Agent, HasStructuredOutput, HasTools
         return app(ContextEnvelope::class)->forTask(
             $this->task,
             'Task Refinement Request',
-            'Search your memory for similar past tasks. Then transform this request into '
-            .'a professional, execution-ready engineering brief. Be specific and actionable.',
+            'Use the supplied grounding snapshot when relevant; do not perform another memory search. '
+            .'Then transform this request into a professional, execution-ready engineering brief. '
+            .'Cite the exact record or memory IDs you relied on. Be specific and actionable.',
+            $this->memoryPage,
         );
     }
 }
