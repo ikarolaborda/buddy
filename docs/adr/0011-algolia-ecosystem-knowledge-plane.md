@@ -34,7 +34,7 @@ Recommendations store only verified citations that resolve to the supplied snaps
 
 ## Activation
 
-1. Add `ECOSYSTEM_REPOSITORY_TOKEN`, `ALGOLIA_APPLICATION_ID`, and the restricted `ALGOLIA_WRITE_API_KEY` to the Buddy repository secrets.
+1. Add owner-scoped, contents-read-only `ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN` and `ECOSYSTEM_PERSONAL_REPOSITORY_TOKEN` credentials, plus `ALGOLIA_APPLICATION_ID` and the restricted `ALGOLIA_WRITE_API_KEY`, to the Buddy repository secrets.
 2. Run the workflow manually against `staging` and inspect record counts and sample searches.
 3. Configure the Buddy runtime with `ALGOLIA_APPLICATION_ID`, a restricted `ALGOLIA_SEARCH_API_KEY`, `BUDDY_KNOWLEDGE_DRIVER=algolia`, and `BUDDY_ALGOLIA_INDEX_ENV=staging`.
 4. Enable `BUDDY_ALGOLIA_PREFETCH_ENABLED=true` while leaving context disabled; observe `ready`/`degraded` rates and queue duration.

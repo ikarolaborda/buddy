@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aerolambda/aerolambda-site
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN }}
           path: sources/aerolambda-site
           persist-credentials: false
 
@@ -48,7 +48,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ikarolaborda/qdrant-memory
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_PERSONAL_REPOSITORY_TOKEN }}
           path: sources/qdrant-memory
           persist-credentials: false
 
@@ -56,7 +56,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aerolambda/theravista-api
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN }}
           path: sources/theravista-api
           persist-credentials: false
 
@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aerolambda/theravista-web
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN }}
           path: sources/theravista-web
           persist-credentials: false
 
@@ -72,7 +72,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aerolambda/theravista-ios
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN }}
           path: sources/theravista-ios
           persist-credentials: false
 
@@ -80,7 +80,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: aerolambda/theravista-android
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_AEROLAMBDA_REPOSITORY_TOKEN }}
           path: sources/theravista-android
           persist-credentials: false
 
@@ -88,7 +88,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ikarolaborda/falinha
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_PERSONAL_REPOSITORY_TOKEN }}
           path: sources/falinha
           persist-credentials: false
 
@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ikarolaborda/ritmovida
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_PERSONAL_REPOSITORY_TOKEN }}
           path: sources/ritmovida
           persist-credentials: false
 
@@ -104,7 +104,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ikarolaborda/heartbeatapp
-          token: ${{ secrets.ECOSYSTEM_REPOSITORY_TOKEN }}
+          token: ${{ secrets.ECOSYSTEM_PERSONAL_REPOSITORY_TOKEN }}
           path: sources/heartbeatapp
           persist-credentials: false
 
