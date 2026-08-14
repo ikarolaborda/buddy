@@ -44,6 +44,7 @@ class EcosystemKnowledgeTest extends TestCase
             'test_internal_theravista_knowledge',
             'test_internal_aerolambda_knowledge',
         ], $query->indices);
+        $this->assertStringStartsWith('Fix token=[redacted]', $query->query);
         $this->assertStringNotContainsString('raw-secret', $query->query);
         $this->assertStringNotContainsString('person@example.com', $query->query);
     }

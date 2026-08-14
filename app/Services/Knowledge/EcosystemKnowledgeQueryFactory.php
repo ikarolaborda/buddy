@@ -12,11 +12,7 @@ class EcosystemKnowledgeQueryFactory
     {
         $repository = trim((string) $task->repo);
         $product = $this->productForRepository($repository);
-        $query = $this->sanitize(implode(' ', array_filter([
-            $task->problem_type->value,
-            $repository,
-            $task->task_summary,
-        ])));
+        $query = $this->sanitize($task->task_summary);
 
         return new EcosystemKnowledgeQuery(
             query: $query,
