@@ -90,11 +90,12 @@ class EcosystemKnowledgeTest extends TestCase
         Http::assertSentCount(1);
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
+            parse_str($payload['requests'][0]['params'], $params);
 
             return $request->hasHeader('X-Algolia-API-Key', 'restricted-search-key')
                 && count($payload['requests']) === 2
-                && $payload['requests'][0]['params']['analytics'] === false
-                && $payload['requests'][0]['params']['filters'] === 'visibility:internal AND status:current';
+                && $params['analytics'] === 'false'
+                && $params['filters'] === 'visibility:internal AND status:current';
         });
     }
 

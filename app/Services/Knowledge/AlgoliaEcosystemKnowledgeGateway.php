@@ -23,19 +23,19 @@ class AlgoliaEcosystemKnowledgeGateway implements EcosystemKnowledgeGateway
             $response = $this->client()->post('/1/indexes/*/queries', [
                 'requests' => array_map(fn (string $index): array => [
                     'indexName' => $index,
-                    'params' => [
+                    'params' => http_build_query([
                         'query' => $query->query,
                         'hitsPerPage' => $query->limit,
-                        'analytics' => false,
-                        'clickAnalytics' => false,
-                        'getRankingInfo' => true,
+                        'analytics' => 'false',
+                        'clickAnalytics' => 'false',
+                        'getRankingInfo' => 'true',
                         'filters' => 'visibility:internal AND status:current',
-                        'attributesToRetrieve' => [
+                        'attributesToRetrieve' => implode(',', [
                             'objectID', 'canonical_id', 'title', 'body', 'snippet', 'product',
                             'repository', 'content_type', 'source_path', 'source_revision',
                             'source_url', 'tags',
-                        ],
-                    ],
+                        ]),
+                    ], '', '&', PHP_QUERY_RFC3986),
                 ], $query->indices),
                 'strategy' => 'none',
             ]);
