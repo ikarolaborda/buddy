@@ -59,14 +59,25 @@ class ShippedModelDefaultsTest extends TestCase
         $this->assertSame('gpt-5.6-sol', $agents['profiles']['prompt-refiner']['model']);
     }
 
-    public function test_problem_type_model_routing_is_off_by_default(): void
+    /**
+     * Routing stays ON because it is worth real money. Benchmarked 2026-08-18 on
+     * the compiled evaluator prompt, 5 reps per arm: sending configuration and
+     * other to gpt-5.6-sol instead of gpt-5.4-mini cost +1620% (about 17x, driven
+     * by a 6.67x unit price and roughly 3x the output tokens once reasoning
+     * tokens are counted) and +600% median latency, about 5s to about 33s.
+     *
+     * The reliability hazard that routing created is handled instead by
+     * StructuredOutputSchemaTest: the outage happened because a malformed strict
+     * schema was rejected by the base model and tolerated by the fast one, so
+     * pinning schema validity is what makes two models safe to run.
+     */
+    public function test_problem_type_model_routing_is_on_with_both_models_pinned(): void
     {
-        $agents = $this->shippedConfig('buddy_agents', 'BUDDY_MODEL_ROUTING');
+        $agents = $this->shippedConfig('buddy_agents', 'BUDDY_MODEL_ROUTING', 'BUDDY_FAST_MODEL', 'BUDDY_MODEL');
 
-        $this->assertFalse(
-            $agents['routing']['enabled'],
-            'Routing splits problem types across models, which hides per-model failures.'
-        );
+        $this->assertTrue($agents['routing']['enabled']);
+        $this->assertSame('gpt-5.4-mini', $agents['routing']['fast_model']);
+        $this->assertSame(['configuration', 'other'], $agents['routing']['fast_problem_types']);
     }
 
     public function test_council_roster_is_not_governed_by_the_evaluator_model(): void

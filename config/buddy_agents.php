@@ -29,7 +29,7 @@ return [
     */
 
     'routing' => [
-        'enabled' => (bool) env('BUDDY_MODEL_ROUTING', false),
+        'enabled' => (bool) env('BUDDY_MODEL_ROUTING', true),
         'fast_model' => env('BUDDY_FAST_MODEL', 'gpt-5.4-mini'),
         'fast_problem_types' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_FAST_PROBLEM_TYPES', 'configuration,other')))),
     ],
