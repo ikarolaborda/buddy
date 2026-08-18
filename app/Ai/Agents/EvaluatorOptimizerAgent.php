@@ -107,9 +107,13 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput
                 ->description('Qdrant memory IDs from the supplied grounding context that informed the result.')
                 ->items($schema->string())
                 ->required(),
+            // OpenAI strict structured output rejects a schema whose `required` omits any
+            // declared property, so this must stay required like its siblings; an empty
+            // array is how "no knowledge hits" is expressed.
             'knowledge_hits' => $schema->array()
                 ->description('Algolia record IDs from the supplied grounding context that informed the result.')
-                ->items($schema->string()),
+                ->items($schema->string())
+                ->required(),
         ];
     }
 

@@ -29,7 +29,7 @@ return [
     */
 
     'routing' => [
-        'enabled' => (bool) env('BUDDY_MODEL_ROUTING', true),
+        'enabled' => (bool) env('BUDDY_MODEL_ROUTING', false),
         'fast_model' => env('BUDDY_FAST_MODEL', 'gpt-5.4-mini'),
         'fast_problem_types' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_FAST_PROBLEM_TYPES', 'configuration,other')))),
     ],
@@ -73,14 +73,14 @@ return [
     'profiles' => [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'openai'),
-            'model' => env('BUDDY_MODEL', 'gpt-5.4'),
+            'model' => env('BUDDY_MODEL', 'gpt-5.6-sol'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 0.2,
         ],
         'prompt-refiner' => [
             'provider' => env('BUDDY_REFINER_PROVIDER', 'openai'),
-            'model' => env('BUDDY_MODEL', 'gpt-5.4'),
+            'model' => env('BUDDY_MODEL', 'gpt-5.6-sol'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 0.3,

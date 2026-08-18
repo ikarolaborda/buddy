@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'model' => env('BUDDY_MODEL', 'gpt-5.4'),
+    'model' => env('BUDDY_MODEL', 'gpt-5.6-sol'),
 
     'embedding_model' => env('BUDDY_EMBEDDING_MODEL', 'text-embedding-3-small'),
 
