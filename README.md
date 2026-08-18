@@ -24,33 +24,84 @@ Primary Agent                          Buddy
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    agents["Primary coding agents<br/>Claude Code · Cursor · Copilot"]
+    bridge["bin/buddy-mcp-bridge<br/>thin stdio-to-HTTPS bridge"]
+
+    subgraph buddy["Buddy — Laravel 13 · PHP 8.5 (Docker: app + queue worker)"]
+        subgraph http["HTTP surface — API-key auth (scopes) · idempotency · throttling"]
+            mcp["Streamable HTTP MCP<br/>POST /api/mcp — buddy.* tools"]
+            rest["REST API — /api/buddy/tasks/*<br/>submit · status · artifacts · evaluate · refine · council · close<br/>+ /api/health · /api/ready · /api/admin/clients"]
+        end
+
+        outbox["Transactional outbox<br/>+ buddy:outbox-relay recovery"]
+        worker["Queue worker<br/>EvaluateTaskJob · CouncilDeliberateJob"]
+        svc["EvaluatorOptimizerService<br/>+ TaskStateService (state machine · leases)"]
+
+        subgraph aicore["AI core"]
+            compiler["PromptCompiler<br/>versioned prompt modules"]
+            evalAgent["EvaluatorOptimizerAgent"]
+            refineAgent["PromptRefinementAgent"]
+            council["CouncilService + CouncilGate<br/>falsification-first 5-model council"]
+        end
+
+        gateway["MemoryGateway<br/>legacy · hub · shadow"]
+        obs["Observability & CIL<br/>LangSmithTracer · buddy:cil-*"]
+    end
+
+    subgraph stores["State"]
+        db[("PostgreSQL prod · SQLite dev<br/>tasks · runs · recommendations · prompts<br/>API clients · idempotency · outbox")]
+        redis[("Redis<br/>queues · locks · rate limits")]
+        qdrant[("Qdrant<br/>episodic memory vectors")]
+    end
+
+    subgraph ext["External services"]
+        openai["OpenAI<br/>gpt-5.6-sol · text-embedding-3-small"]
+        openrouter["OpenRouter<br/>council member models"]
+        hub["Go qdrant-memory hub<br/>governed memory (BUDDY_MEMORY_BACKEND=hub in production)"]
+        langsmith["LangSmith<br/>traces · CIL datasets"]
+    end
+
+    agents -->|"MCP over HTTPS<br/>Bearer bdy_live_…"| mcp
+    agents -->|stdio| bridge
+    bridge -->|"HTTPS + API key"| rest
+    agents -->|"REST + API key"| rest
+
+    http -->|"task CRUD · sync refine"| svc
+    http -->|"evaluate / council → 202"| outbox
+    outbox --> redis
+    redis --> worker
+    worker --> svc
+
+    svc --> compiler
+    compiler --> evalAgent
+    compiler --> refineAgent
+    svc --> council
+    evalAgent -->|laravel/ai| openai
+    refineAgent -->|laravel/ai| openai
+    council -->|Http| openrouter
+
+    svc --> gateway
+    gateway -->|legacy| qdrant
+    gateway -->|"hub · shadow"| hub
+    hub --> qdrant
+    gateway -->|"embeddings (legacy)"| openai
+
+    svc --> db
+    svc -.->|"fire-and-forget"| obs
+    obs -.-> langsmith
 ```
-┌──────────────────────────────────────────────────────┐
-│                  External Agents                     │
-│           (Claude, Cursor, Copilot, etc.)            │
-└──────────┬──────────────────────┬────────────────────┘
-           │ REST API              │ MCP (stdio)
-           ▼                       ▼
-┌────────────────────┐   ┌─────────────────────┐
-│   API Controllers  │   │   MCP Tool Server   │
-│   (5 endpoints)    │   │   (7 tools)         │
-└────────┬───────────┘   └────────┬────────────┘
-         │                         │
-         ▼                         ▼
-┌────────────────────────────────────────────┐
-│          Application Services              │
-│  EvaluatorOptimizerService                 │
-│  EscalationService                         │
-│  QdrantMemoryService                       │
-└────────┬──────────────────┬────────────────┘
-         │                  │
-         ▼                  ▼
-┌──────────────┐   ┌───────────────────┐
-│   Database   │   │  External APIs    │
-│   (SQLite)   │   │  OpenAI (GPT-5.4) │
-│              │   │  Qdrant (vectors) │
-└──────────────┘   └───────────────────┘
-```
+
+The asynchronous evaluation lifecycle, end to end:
+
+1. An agent submits a problem packet (REST `POST /api/buddy/tasks` or the `buddy.submit_problem` MCP tool). The task and its artifacts are persisted in one transaction, deduplicated by `Idempotency-Key`.
+2. `evaluate` (or `council`, when the criticality gate allows it) appends an outbox message inside the same transaction and returns `202`. After commit the message is published to the Redis queue; `buddy:outbox-relay` republishes anything a crashed process left behind.
+3. A worker claims the task under a lease, searches episodic memory through the `MemoryGateway`, compiles the versioned prompt bundle, and calls the agent via `laravel/ai` with structured output.
+4. The run (model, prompt hash, token usage), recommendation, and decision log are persisted transactionally; a trace is sent to LangSmith fire-and-forget. The caller polls task status for the result.
+5. `close_task` records the outcome as feedback and optionally distills learnings back into vector memory.
+
+`refine_prompt` is the one synchronous path — it runs the `PromptRefinementAgent` inline and returns the execution-ready brief directly. A full local stdio MCP server (`php artisan buddy:mcp-server`) also exists for development; the thin bridge is the supported stdio fallback for deployed instances (ADR 0003).
 
 ## Tech Stack
 
@@ -59,11 +110,11 @@ Primary Agent                          Buddy
 | Framework       | Laravel 13.x                                                 |
 | PHP             | 8.5+                                                         |
 | AI SDK          | [laravel/ai](https://laravel.com/ai) v0.3.2                 |
-| Evaluator Model | GPT-5.4 (configurable)                                       |
+| Evaluator Model | gpt-5.6-sol (configurable)                                   |
 | Vector DB       | Qdrant (episodic memory + semantic search)                   |
 | Database        | SQLite (dev) / PostgreSQL (production)                       |
 | Queue           | Laravel database queue (dev) / Redis (production)            |
-| MCP Transport   | stdio (JSON-RPC 2.0)                                         |
+| MCP Transport   | Streamable HTTP (production) / stdio via `buddy-mcp-bridge` or `buddy:mcp-server` (local dev) |
 | Testing         | PHPUnit 12.x with Laravel AI SDK fakes                       |
 | Formatting      | Laravel Pint                                                 |
 
@@ -136,7 +187,7 @@ All Buddy-specific configuration lives in `config/buddy.php` and `.env`:
 
 | Variable                    | Default                   | Description                          |
 |-----------------------------|---------------------------|--------------------------------------|
-| `BUDDY_MODEL`              | `gpt-5.4`                | AI model for evaluation              |
+| `BUDDY_MODEL`              | `gpt-5.6-sol`            | AI model for evaluation              |
 | `BUDDY_EMBEDDING_MODEL`    | `text-embedding-3-small`  | Model for vector embeddings          |
 | `BUDDY_MAX_EVALUATION_STEPS` | `10`                   | Max tool-use steps per evaluation    |
 | `BUDDY_EVALUATION_TIMEOUT` | `120`                     | Timeout in seconds                   |
