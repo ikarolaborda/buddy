@@ -263,10 +263,21 @@ class RemoteMcpHandler
             'requested_outcome' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
-        $task = DB::transaction(fn () => $this->evaluator->createTask(
-            ProblemPacket::fromArray($validated),
-            $client->id,
-        ));
+        // Submitting a problem IS the request to evaluate it. createTask()
+        // appends only the knowledge-prefetch message, so without the
+        // task-submitted message nothing ever dispatches EvaluateTaskJob and
+        // the task sits Pending with runs=0 while the agent polls forever.
+        $task = DB::transaction(function () use ($validated, $client) {
+            $task = $this->evaluator->createTask(
+                ProblemPacket::fromArray($validated),
+                $client->id,
+            );
+
+            $this->state->transition($task, TaskStatus::Evaluating);
+            $this->outbox->appendTaskSubmitted($task);
+
+            return $task;
+        });
 
         return $this->toolResult($id, [
             'task_id' => $task->ulid,

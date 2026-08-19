@@ -3,8 +3,12 @@
 namespace App\Mcp\Tools;
 
 use App\DTOs\ProblemPacket;
+use App\Enums\TaskStatus;
 use App\Mcp\BaseMcpTool;
 use App\Services\EvaluatorOptimizerService;
+use App\Services\OutboxPublisher;
+use App\Services\TaskStateService;
+use Illuminate\Support\Facades\DB;
 
 class SubmitProblemTool extends BaseMcpTool
 {
@@ -42,7 +46,19 @@ class SubmitProblemTool extends BaseMcpTool
 
         /** @var EvaluatorOptimizerService $evaluator */
         $evaluator = app(EvaluatorOptimizerService::class);
-        $task = $evaluator->createTask($packet);
+
+        // Submitting a problem IS the request to evaluate it. createTask()
+        // appends only the knowledge-prefetch message, so without the
+        // task-submitted message nothing ever dispatches EvaluateTaskJob and
+        // the task sits Pending with runs=0 while the agent polls forever.
+        $task = DB::transaction(function () use ($evaluator, $packet) {
+            $task = $evaluator->createTask($packet);
+
+            app(TaskStateService::class)->transition($task, TaskStatus::Evaluating);
+            app(OutboxPublisher::class)->appendTaskSubmitted($task);
+
+            return $task;
+        });
 
         return [
             'content' => [
@@ -51,7 +67,7 @@ class SubmitProblemTool extends BaseMcpTool
                     'text' => json_encode([
                         'task_id' => $task->ulid,
                         'status' => $task->status->value,
-                        'message' => 'Problem submitted. Use buddy.get_task_status to check or buddy.get_recommendation after evaluation.',
+                        'message' => 'Problem submitted and evaluation dispatched. Poll buddy.get_task_status, then buddy.get_recommendation.',
                     ], JSON_THROW_ON_ERROR),
                 ],
             ],

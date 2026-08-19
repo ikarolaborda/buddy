@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Enums\ApiScope;
+use App\Jobs\EvaluateTaskJob;
 use App\Mcp\ProtocolVersions;
 use App\Models\ApiClient;
 use App\Models\BuddyTask;
 use App\Services\ApiKeyService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class RemoteMcpTest extends TestCase
@@ -197,6 +199,10 @@ class RemoteMcpTest extends TestCase
 
     public function test_submit_and_status_round_trip_with_client_attribution(): void
     {
+        // Submitting must itself dispatch the evaluation. Faking the queue keeps
+        // the assertion on the dispatch rather than on a full sync evaluation.
+        Queue::fake();
+
         $submit = $this->rpc([
             'jsonrpc' => '2.0', 'id' => 4, 'method' => 'tools/call',
             'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
@@ -222,7 +228,12 @@ class RemoteMcpTest extends TestCase
 
         $status->assertOk();
         $statusPayload = json_decode($status->json('result.content.0.text'), true);
-        $this->assertSame('pending', $statusPayload['status']);
+        $this->assertSame('evaluating', $statusPayload['status']);
+
+        // Regression: submit_problem used to append only the knowledge-prefetch
+        // message, so nothing dispatched EvaluateTaskJob and the task sat
+        // Pending with runs=0 while the caller polled forever.
+        Queue::assertPushed(EvaluateTaskJob::class);
     }
 
     public function test_cross_client_tasks_are_invisible(): void
