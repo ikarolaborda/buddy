@@ -15,6 +15,8 @@ param redisHostName string
 param redisPort string = '10000'
 param redisUseTls bool = true
 param memoryHubInternalUrl string
+param azureOpenAiUrl string
+param azureOpenAiDeployment string
 
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
@@ -68,6 +70,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
+      activeRevisionsMode: 'Single'
       registries: [
         {
           server: acrLoginServer
@@ -111,8 +114,8 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
         {
-          name: 'openai-key'
-          keyVaultUrl: '${keyVaultUri}secrets/openai-api-key'
+          name: 'azure-openai-key'
+          keyVaultUrl: '${keyVaultUri}secrets/azure-openai-api-key'
           identity: identity.id
         }
       ]
@@ -178,10 +181,17 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             // a live council mid-deliberation (ADR 0009 timing chain).
             { name: 'REDIS_QUEUE_RETRY_AFTER', value: '1200' }
             { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
+            { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
+            { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }
+            { name: 'BUDDY_MODEL', value: 'gpt-5.6-sol' }
+            { name: 'BUDDY_MODEL_ROUTING', value: 'false' }
+            { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }
+            { name: 'AZURE_OPENAI_URL', value: azureOpenAiUrl }
+            { name: 'AZURE_OPENAI_API_VERSION', value: '2024-10-21' }
+            { name: 'AZURE_OPENAI_DEPLOYMENT', value: azureOpenAiDeployment }
             { name: 'BUDDY_MEMORY_BACKEND', value: 'hub' }
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
             { name: 'BUDDY_MEMORY_HUB_TOKEN', secretRef: 'hub-token' }
-            { name: 'OPENAI_API_KEY', secretRef: 'openai-key' }
             { name: 'LANGSMITH_SEND_PROMPTS', value: 'true' }
           ]
         }

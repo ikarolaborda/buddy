@@ -52,6 +52,12 @@ param alertEmailAddress string = ''
 @description('Monthly resource-group budget in subscription currency')
 param monthlyBudgetAmount int = 100
 
+@description('Azure OpenAI v1 resource endpoint used by Buddy evaluation agents')
+param azureOpenAiUrl string = 'https://aerolambda-ai-eastus2.openai.azure.com'
+
+@description('Direct-from-Azure deployment used by Buddy evaluation agents')
+param azureOpenAiDeployment string = 'gpt-5.6-sol'
+
 module network 'modules/network.bicep' = {
   name: 'network'
   params: {
@@ -169,6 +175,8 @@ module buddyApi 'modules/buddy-api.bicep' = if (deployWorkloads) {
     redisPort: redisPort
     redisUseTls: redisTls
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
+    azureOpenAiUrl: azureOpenAiUrl
+    azureOpenAiDeployment: azureOpenAiDeployment
   }
 }
 
@@ -188,6 +196,8 @@ module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployB
     redisPort: redisPort
     redisUseTls: redisTls
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
+    azureOpenAiUrl: azureOpenAiUrl
+    azureOpenAiDeployment: azureOpenAiDeployment
   }
 }
 

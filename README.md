@@ -124,7 +124,7 @@ The asynchronous evaluation lifecycle, end to end:
 
 - PHP 8.5+
 - Composer
-- An OpenAI API key
+- An Azure OpenAI resource and API key (or another Laravel AI provider)
 - Qdrant running locally (or via Docker)
 
 ### Local Setup
@@ -139,8 +139,9 @@ composer install
 cp .env.example .env
 php artisan key:generate
 
-# Set your API keys in .env
-# OPENAI_API_KEY=sk-...
+# Set the Azure OpenAI values in .env
+# AZURE_OPENAI_API_KEY=...
+# AZURE_OPENAI_URL=https://your-resource.openai.azure.com
 
 # Create database and run migrations
 touch database/database.sqlite
@@ -170,9 +171,9 @@ The entrypoint detects a fresh clone and automatically:
 
 If everything is already present, the entrypoint skips all bootstrap steps.
 
-After startup, set your OpenAI API key in `.env`:
+After startup, set your Azure OpenAI connection in `.env`:
 ```bash
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Edit .env and set AZURE_OPENAI_API_KEY and AZURE_OPENAI_URL
 ```
 
 This starts two services:
@@ -188,6 +189,9 @@ All Buddy-specific configuration lives in `config/buddy.php` and `.env`:
 | Variable                    | Default                   | Description                          |
 |-----------------------------|---------------------------|--------------------------------------|
 | `BUDDY_MODEL`              | `gpt-5.6-sol`            | AI model for evaluation              |
+| `BUDDY_EVALUATOR_PROVIDER` | `azure`                 | Laravel AI provider for evaluation   |
+| `BUDDY_REFINER_PROVIDER`   | `azure`                 | Laravel AI provider for refinement   |
+| `BUDDY_MODEL_ROUTING`      | `false`                 | Optional problem-type model routing  |
 | `BUDDY_EMBEDDING_MODEL`    | `text-embedding-3-small`  | Model for vector embeddings          |
 | `BUDDY_MAX_EVALUATION_STEPS` | `10`                   | Max tool-use steps per evaluation    |
 | `BUDDY_EVALUATION_TIMEOUT` | `120`                     | Timeout in seconds                   |
@@ -200,9 +204,12 @@ All Buddy-specific configuration lives in `config/buddy.php` and `.env`:
 
 AI provider keys are configured via Laravel AI SDK in `config/ai.php`:
 
-| Variable           | Description            |
-|--------------------|------------------------|
-| `OPENAI_API_KEY`   | OpenAI API key         |
+| Variable                     | Description                                  |
+|------------------------------|----------------------------------------------|
+| `AZURE_OPENAI_API_KEY`       | Azure OpenAI API key                         |
+| `AZURE_OPENAI_URL`           | Azure OpenAI resource URL                    |
+| `AZURE_OPENAI_DEPLOYMENT`    | Azure deployment name                        |
+| `OPENAI_API_KEY`             | Optional direct-OpenAI fallback for local use |
 
 ## REST API
 
@@ -435,7 +442,7 @@ Add to your Claude Code settings (`~/.claude/settings.json` or project-level `.c
 }
 ```
 
-Secrets (`OPENAI_API_KEY`, `APP_KEY`) are read from the mounted `.env` file — they never appear in the Claude config. Only the Docker network override (`QDRANT_HOST`) is passed as `-e` because the hostname differs inside the container network.
+Secrets (`AZURE_OPENAI_API_KEY`, `APP_KEY`) are read from the mounted `.env` file — they never appear in the Claude config. Only the Docker network override (`QDRANT_HOST`) is passed as `-e` because the hostname differs inside the container network.
 
 **Prerequisites:** Build the image once with `docker compose build` from the Buddy directory. Set your API keys in the Buddy `.env` file.
 

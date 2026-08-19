@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.45.15.27210",
-      "templateHash": "11278641454819791364"
+      "templateHash": "16687278093301997863"
     }
   },
   "parameters": {
@@ -107,6 +107,20 @@
       "defaultValue": 100,
       "metadata": {
         "description": "Monthly resource-group budget in subscription currency"
+      }
+    },
+    "azureOpenAiUrl": {
+      "type": "string",
+      "defaultValue": "https://aerolambda-ai-eastus2.openai.azure.com",
+      "metadata": {
+        "description": "Azure OpenAI v1 resource endpoint used by Buddy evaluation agents"
+      }
+    },
+    "azureOpenAiDeployment": {
+      "type": "string",
+      "defaultValue": "gpt-5.6-sol",
+      "metadata": {
+        "description": "Direct-from-Azure deployment used by Buddy evaluation agents"
       }
     }
   },
@@ -1350,6 +1364,12 @@
           },
           "memoryHubInternalUrl": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'memory-hub'), '2025-04-01').outputs.internalUrl.value]"
+          },
+          "azureOpenAiUrl": {
+            "value": "[parameters('azureOpenAiUrl')]"
+          },
+          "azureOpenAiDeployment": {
+            "value": "[parameters('azureOpenAiDeployment')]"
           }
         },
         "template": {
@@ -1359,7 +1379,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "8117277161329225532"
+              "templateHash": "3156619179720328191"
             }
           },
           "parameters": {
@@ -1402,6 +1422,12 @@
               "defaultValue": true
             },
             "memoryHubInternalUrl": {
+              "type": "string"
+            },
+            "azureOpenAiUrl": {
+              "type": "string"
+            },
+            "azureOpenAiDeployment": {
               "type": "string"
             }
           },
@@ -1458,6 +1484,7 @@
               "properties": {
                 "managedEnvironmentId": "[parameters('containerAppsEnvironmentId')]",
                 "configuration": {
+                  "activeRevisionsMode": "Single",
                   "ingress": {
                     "external": true,
                     "targetPort": 8080,
@@ -1501,8 +1528,8 @@
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
                     },
                     {
-                      "name": "openai-key",
-                      "keyVaultUrl": "[format('{0}secrets/openai-api-key', parameters('keyVaultUri'))]",
+                      "name": "azure-openai-key",
+                      "keyVaultUrl": "[format('{0}secrets/azure-openai-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-api-{0}', parameters('environment')))]"
                     }
                   ]
@@ -1632,8 +1659,36 @@
                           "value": "true"
                         },
                         {
-                          "name": "OPENAI_API_KEY",
-                          "secretRef": "openai-key"
+                          "name": "BUDDY_EVALUATOR_PROVIDER",
+                          "value": "azure"
+                        },
+                        {
+                          "name": "BUDDY_REFINER_PROVIDER",
+                          "value": "azure"
+                        },
+                        {
+                          "name": "BUDDY_MODEL",
+                          "value": "gpt-5.6-sol"
+                        },
+                        {
+                          "name": "BUDDY_MODEL_ROUTING",
+                          "value": "false"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_API_KEY",
+                          "secretRef": "azure-openai-key"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_URL",
+                          "value": "[parameters('azureOpenAiUrl')]"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_API_VERSION",
+                          "value": "2024-10-21"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_DEPLOYMENT",
+                          "value": "[parameters('azureOpenAiDeployment')]"
                         },
                         {
                           "name": "LANGSMITH_SEND_PROMPTS",
@@ -1737,6 +1792,12 @@
           },
           "memoryHubInternalUrl": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'memory-hub'), '2025-04-01').outputs.internalUrl.value]"
+          },
+          "azureOpenAiUrl": {
+            "value": "[parameters('azureOpenAiUrl')]"
+          },
+          "azureOpenAiDeployment": {
+            "value": "[parameters('azureOpenAiDeployment')]"
           }
         },
         "template": {
@@ -1746,7 +1807,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "2884174180906842675"
+              "templateHash": "778825709631295895"
             }
           },
           "parameters": {
@@ -1789,6 +1850,12 @@
               "defaultValue": true
             },
             "memoryHubInternalUrl": {
+              "type": "string"
+            },
+            "azureOpenAiUrl": {
+              "type": "string"
+            },
+            "azureOpenAiDeployment": {
               "type": "string"
             }
           },
@@ -1845,6 +1912,7 @@
               "properties": {
                 "managedEnvironmentId": "[parameters('containerAppsEnvironmentId')]",
                 "configuration": {
+                  "activeRevisionsMode": "Single",
                   "registries": [
                     {
                       "server": "[parameters('acrLoginServer')]",
@@ -1888,8 +1956,8 @@
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
                     },
                     {
-                      "name": "openai-key",
-                      "keyVaultUrl": "[format('{0}secrets/openai-api-key', parameters('keyVaultUri'))]",
+                      "name": "azure-openai-key",
+                      "keyVaultUrl": "[format('{0}secrets/azure-openai-api-key', parameters('keyVaultUri'))]",
                       "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-buddy-worker-{0}', parameters('environment')))]"
                     }
                   ]
@@ -2034,6 +2102,38 @@
                           "secretRef": "openrouter-api-key"
                         },
                         {
+                          "name": "BUDDY_EVALUATOR_PROVIDER",
+                          "value": "azure"
+                        },
+                        {
+                          "name": "BUDDY_REFINER_PROVIDER",
+                          "value": "azure"
+                        },
+                        {
+                          "name": "BUDDY_MODEL",
+                          "value": "gpt-5.6-sol"
+                        },
+                        {
+                          "name": "BUDDY_MODEL_ROUTING",
+                          "value": "false"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_API_KEY",
+                          "secretRef": "azure-openai-key"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_URL",
+                          "value": "[parameters('azureOpenAiUrl')]"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_API_VERSION",
+                          "value": "2024-10-21"
+                        },
+                        {
+                          "name": "AZURE_OPENAI_DEPLOYMENT",
+                          "value": "[parameters('azureOpenAiDeployment')]"
+                        },
+                        {
                           "name": "BUDDY_MEMORY_BACKEND",
                           "value": "hub"
                         },
@@ -2044,10 +2144,6 @@
                         {
                           "name": "BUDDY_MEMORY_HUB_TOKEN",
                           "secretRef": "hub-token"
-                        },
-                        {
-                          "name": "OPENAI_API_KEY",
-                          "secretRef": "openai-key"
                         },
                         {
                           "name": "LANGSMITH_SEND_PROMPTS",

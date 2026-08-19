@@ -16,6 +16,8 @@ param redisHostName string
 param redisPort string = '10000'
 param redisUseTls bool = true
 param memoryHubInternalUrl string
+param azureOpenAiUrl string
+param azureOpenAiDeployment string
 
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
@@ -69,6 +71,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: containerAppsEnvironmentId
     configuration: {
+      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: 8080
@@ -112,8 +115,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
         {
-          name: 'openai-key'
-          keyVaultUrl: '${keyVaultUri}secrets/openai-api-key'
+          name: 'azure-openai-key'
+          keyVaultUrl: '${keyVaultUri}secrets/azure-openai-api-key'
           identity: identity.id
         }
       ]
@@ -167,7 +170,14 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
             { name: 'BUDDY_MEMORY_HUB_TOKEN', secretRef: 'hub-token' }
             { name: 'BUDDY_API_AUTH', value: 'true' }
-            { name: 'OPENAI_API_KEY', secretRef: 'openai-key' }
+            { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
+            { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }
+            { name: 'BUDDY_MODEL', value: 'gpt-5.6-sol' }
+            { name: 'BUDDY_MODEL_ROUTING', value: 'false' }
+            { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }
+            { name: 'AZURE_OPENAI_URL', value: azureOpenAiUrl }
+            { name: 'AZURE_OPENAI_API_VERSION', value: '2024-10-21' }
+            { name: 'AZURE_OPENAI_DEPLOYMENT', value: azureOpenAiDeployment }
             { name: 'LANGSMITH_SEND_PROMPTS', value: 'true' }
           ]
           probes: [
