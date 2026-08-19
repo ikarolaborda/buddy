@@ -142,6 +142,11 @@ class HubMemoryGateway implements MemoryGateway
             ->timeout((int) config('buddy.memory.hub.timeout', 15));
 
         $token = config('buddy.memory.hub.token');
+        $tokenFile = config('buddy.memory.hub.token_file');
+
+        if ((! is_string($token) || $token === '') && is_string($tokenFile) && is_readable($tokenFile)) {
+            $token = trim((string) file_get_contents($tokenFile));
+        }
 
         if ($token) {
             $client->withToken($token);

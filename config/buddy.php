@@ -70,6 +70,7 @@ return [
         'hub' => [
             'base_url' => env('BUDDY_MEMORY_HUB_URL', 'http://localhost:8090'),
             'token' => env('BUDDY_MEMORY_HUB_TOKEN'),
+            'token_file' => env('BUDDY_MEMORY_HUB_TOKEN_FILE'),
             'project' => env('BUDDY_MEMORY_HUB_PROJECT', 'buddy'),
             'connect_timeout' => (int) env('BUDDY_MEMORY_HUB_CONNECT_TIMEOUT', 5),
             'timeout' => (int) env('BUDDY_MEMORY_HUB_TIMEOUT', 15),

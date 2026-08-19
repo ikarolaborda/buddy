@@ -135,4 +135,25 @@ class HubMemoryGatewayTest extends TestCase
         $this->assertTrue($health->healthy);
         $this->assertSame('hub', $health->backend);
     }
+
+    public function test_uses_bearer_token_from_mounted_secret_file(): void
+    {
+        $tokenFile = tempnam(sys_get_temp_dir(), 'buddy-memory-token-');
+        file_put_contents($tokenFile, "scoped-buddy-token\n");
+        config([
+            'buddy.memory.hub.token' => null,
+            'buddy.memory.hub.token_file' => $tokenFile,
+        ]);
+
+        Http::fake([
+            'hub.test/api/healthz' => Http::response(['ok' => true]),
+        ]);
+
+        try {
+            $this->gateway->health();
+            Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer scoped-buddy-token'));
+        } finally {
+            unlink($tokenFile);
+        }
+    }
 }
