@@ -57,7 +57,7 @@ flowchart TB
     end
 
     subgraph ext["External services"]
-        openai["OpenAI<br/>gpt-5.6-sol · text-embedding-3-small"]
+        openai["OpenAI<br/>gpt-6-astra · text-embedding-3-small"]
         openrouter["OpenRouter<br/>council member models"]
         hub["Go qdrant-memory hub<br/>governed memory (BUDDY_MEMORY_BACKEND=hub in production)"]
         langsmith["LangSmith<br/>traces · CIL datasets"]
@@ -110,7 +110,7 @@ The asynchronous evaluation lifecycle, end to end:
 | Framework       | Laravel 13.x                                                 |
 | PHP             | 8.5+                                                         |
 | AI SDK          | [laravel/ai](https://laravel.com/ai) v0.3.2                 |
-| Evaluator Model | gpt-5.6-sol (configurable)                                   |
+| Evaluator Model | gpt-6-astra (configurable)                                    |
 | Vector DB       | Qdrant (episodic memory + semantic search)                   |
 | Database        | SQLite (dev) / PostgreSQL (production)                       |
 | Queue           | Laravel database queue (dev) / Redis (production)            |
@@ -188,7 +188,7 @@ All Buddy-specific configuration lives in `config/buddy.php` and `.env`:
 
 | Variable                    | Default                   | Description                          |
 |-----------------------------|---------------------------|--------------------------------------|
-| `BUDDY_MODEL`              | `gpt-5.6-sol`            | AI model for evaluation              |
+| `BUDDY_MODEL`              | `gpt-6-astra`            | AI model for evaluation              |
 | `BUDDY_EVALUATOR_PROVIDER` | `azure`                 | Laravel AI provider for evaluation   |
 | `BUDDY_REFINER_PROVIDER`   | `azure`                 | Laravel AI provider for refinement   |
 | `BUDDY_MODEL_ROUTING`      | `false`                 | Optional problem-type model routing  |

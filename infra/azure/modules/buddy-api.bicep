@@ -172,7 +172,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'BUDDY_API_AUTH', value: 'true' }
             { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
             { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }
-            { name: 'BUDDY_MODEL', value: 'gpt-5.6-sol' }
+            { name: 'BUDDY_MODEL', value: 'gpt-6-astra' }
             { name: 'BUDDY_MODEL_ROUTING', value: 'false' }
             { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }
             { name: 'AZURE_OPENAI_URL', value: azureOpenAiUrl }

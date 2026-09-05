@@ -15,7 +15,7 @@ class AzureProviderDeploymentTest extends TestCase
             $this->assertStringContainsString("activeRevisionsMode: 'Single'", $template);
             $this->assertStringContainsString("{ name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }", $template);
             $this->assertStringContainsString("{ name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }", $template);
-            $this->assertStringContainsString("{ name: 'BUDDY_MODEL', value: 'gpt-5.6-sol' }", $template);
+            $this->assertStringContainsString("{ name: 'BUDDY_MODEL', value: 'gpt-6-astra' }", $template);
             $this->assertStringContainsString("{ name: 'BUDDY_MODEL_ROUTING', value: 'false' }", $template);
             $this->assertStringContainsString("{ name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }", $template);
             $this->assertStringNotContainsString("name: 'OPENAI_API_KEY'", $template);

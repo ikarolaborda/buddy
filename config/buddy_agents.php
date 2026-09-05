@@ -70,20 +70,45 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Temperature and gpt-6-astra
+    |--------------------------------------------------------------------------
+    |
+    | These profiles used to ask for 0.2 and 0.3. gpt-6-astra REJECTS both:
+    | "Unsupported value: 'temperature' does not support 0.2 with this model.
+    | Only the default (1) value is supported." (verified live against the
+    | eastus2 deployment, 2026-09-05). It also rejects `max_tokens` and wants
+    | `max_completion_tokens` instead.
+    |
+    | Neither rejection can fire on this code path today, and it is worth being
+    | precise about why rather than assuming the config is what gets sent:
+    | laravel/ai builds request options from PHP ATTRIBUTES on the agent class,
+    | not from this array. EvaluatorOptimizerAgent and PromptRefinementAgent
+    | declare only #[MaxSteps(10)], so temperature and maxTokens are both null,
+    | Prism drops the null temperature via array_filter, and the max-tokens
+    | default of 64000 in CreatesPrismTextRequests applies only to Anthropic.
+    |
+    | So 1.0 here is not a bug fix; it stops the config from asserting a value
+    | the model would refuse, which is what would bite whoever later adds a
+    | #[Temperature] attribute or an agent_profiles override row.
+    |
+    */
+
     'profiles' => [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'azure'),
-            'model' => env('BUDDY_MODEL', 'gpt-5.6-sol'),
+            'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
-            'temperature' => 0.2,
+            'temperature' => 1.0,
         ],
         'prompt-refiner' => [
             'provider' => env('BUDDY_REFINER_PROVIDER', 'azure'),
-            'model' => env('BUDDY_MODEL', 'gpt-5.6-sol'),
+            'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
-            'temperature' => 0.3,
+            'temperature' => 1.0,
         ],
     ],
 

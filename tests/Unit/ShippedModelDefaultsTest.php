@@ -54,9 +54,9 @@ class ShippedModelDefaultsTest extends TestCase
         $buddy = $this->shippedConfig('buddy', 'BUDDY_MODEL');
         $agents = $this->shippedConfig('buddy_agents', 'BUDDY_MODEL');
 
-        $this->assertSame('gpt-5.6-sol', $buddy['model']);
-        $this->assertSame('gpt-5.6-sol', $agents['profiles']['evaluator-optimizer']['model']);
-        $this->assertSame('gpt-5.6-sol', $agents['profiles']['prompt-refiner']['model']);
+        $this->assertSame('gpt-6-astra', $buddy['model']);
+        $this->assertSame('gpt-6-astra', $agents['profiles']['evaluator-optimizer']['model']);
+        $this->assertSame('gpt-6-astra', $agents['profiles']['prompt-refiner']['model']);
     }
 
     public function test_shipped_evaluators_use_azure_without_problem_type_routing(): void

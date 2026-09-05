@@ -183,7 +183,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
             { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
             { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }
-            { name: 'BUDDY_MODEL', value: 'gpt-5.6-sol' }
+            { name: 'BUDDY_MODEL', value: 'gpt-6-astra' }
             { name: 'BUDDY_MODEL_ROUTING', value: 'false' }
             { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }
             { name: 'AZURE_OPENAI_URL', value: azureOpenAiUrl }

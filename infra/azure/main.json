@@ -118,7 +118,7 @@
     },
     "azureOpenAiDeployment": {
       "type": "string",
-      "defaultValue": "gpt-5.6-sol",
+      "defaultValue": "gpt-6-astra",
       "metadata": {
         "description": "Direct-from-Azure deployment used by Buddy evaluation agents"
       }
@@ -1668,7 +1668,7 @@
                         },
                         {
                           "name": "BUDDY_MODEL",
-                          "value": "gpt-5.6-sol"
+                          "value": "gpt-6-astra"
                         },
                         {
                           "name": "BUDDY_MODEL_ROUTING",
@@ -2111,7 +2111,7 @@
                         },
                         {
                           "name": "BUDDY_MODEL",
-                          "value": "gpt-5.6-sol"
+                          "value": "gpt-6-astra"
                         },
                         {
                           "name": "BUDDY_MODEL_ROUTING",

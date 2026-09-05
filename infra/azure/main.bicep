@@ -56,7 +56,7 @@ param monthlyBudgetAmount int = 100
 param azureOpenAiUrl string = 'https://aerolambda-ai-eastus2.openai.azure.com'
 
 @description('Direct-from-Azure deployment used by Buddy evaluation agents')
-param azureOpenAiDeployment string = 'gpt-5.6-sol'
+param azureOpenAiDeployment string = 'gpt-6-astra'
 
 module network 'modules/network.bicep' = {
   name: 'network'
