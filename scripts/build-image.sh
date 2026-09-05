@@ -81,19 +81,38 @@ fi
 
 cat <<EOF
 
-built. next steps, in this order:
+built. next steps, in this order.
+
+These named the rg-buddy-dev estate until 2026-09-05. That resource group was
+decommissioned with the old subscription; buddy now runs in rg-buddy-credit in
+the credited subscription, and both subscriptions are called "Azure subscription
+1", so the GUID is the only thing that distinguishes them. Pass it explicitly.
+
+  SUB=e7e7a0f4-2689-47ed-b7e0-ce68d8394cc4
 
   1. migrations do NOT run at container start. Repoint and run the job:
-       az containerapp job update -n caj-buddy-migrate-dev -g rg-buddy-dev \\
-         --image ${REGISTRY}.azurecr.io/buddy:${SHA}-octane
-       az containerapp job start  -n caj-buddy-migrate-dev -g rg-buddy-dev
+       az containerapp job update -n caj-buddy-migrate-credit -g rg-buddy-credit --subscription \$SUB \\
+         --image ${REGISTRY}.azurecr.io/buddy:${SHA}
+       az containerapp job start  -n caj-buddy-migrate-credit -g rg-buddy-credit --subscription \$SUB
 
   2. deploy the API at ZERO traffic and probe the per-revision FQDN first:
-       az containerapp update -n ca-buddy-api-dev -g rg-buddy-dev \\
+       az containerapp update -n ca-buddy-api-credit -g rg-buddy-credit --subscription \$SUB \\
          --image ${REGISTRY}.azurecr.io/buddy:${SHA}-octane --revision-suffix oct-${SHA}
-       curl https://ca-buddy-api-dev--oct-${SHA}.<env-domain>/api/health
+       curl https://ca-buddy-api-credit--oct-${SHA}.wonderfuldune-56e52a9b.northeurope.azurecontainerapps.io/api/health
 
   3. only then shift traffic, keeping the previous revision for rollback:
-       az containerapp ingress traffic set -n ca-buddy-api-dev -g rg-buddy-dev \\
-         --revision-weight ca-buddy-api-dev--oct-${SHA}=100 <previous>=0
+       az containerapp ingress traffic set -n ca-buddy-api-credit -g rg-buddy-credit --subscription \$SUB \\
+         --revision-weight ca-buddy-api-credit--oct-${SHA}=100 <previous>=0
+
+  4. the worker and the remaining jobs run the fpm tag, so they need repointing too:
+       az containerapp update -n ca-buddy-worker-credit -g rg-buddy-credit --subscription \$SUB \\
+         --image ${REGISTRY}.azurecr.io/buddy:${SHA}
+       for j in caj-buddy-outbox-credit caj-buddy-feedback-health-credit; do
+         az containerapp job update -n \$j -g rg-buddy-credit --subscription \$SUB \\
+           --image ${REGISTRY}.azurecr.io/buddy:${SHA}
+       done
+
+  Never scale an app to zero or delete a revision set while the Microsoft for
+  Startups milestone window is open (to roughly 2026-10-10): a counted workload
+  dropping below the spend floor for a single day resets the tranche.
 EOF
