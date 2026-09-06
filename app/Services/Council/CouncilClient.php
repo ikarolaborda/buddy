@@ -83,11 +83,23 @@ class CouncilClient
     protected function interpret(array $member, string $system, string $user, Response $response): array
     {
         if (! $response->successful()) {
-            return [
-                'json' => null,
-                'usage' => [],
-                'error' => 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300),
-            ];
+            // askAll fires every member at once and OpenRouter reserves each
+            // request's worth of credit for as long as it is in flight, so a
+            // five-way pool can be refused for budget it has not spent yet.
+            // interpret() runs after the pool has drained, which is precisely
+            // the condition the 402 asks us to wait for, so one retry here
+            // recovers a member that was never actually unaffordable.
+            if ($this->settlingWouldHelp($response)) {
+                $response = $this->request()->post('/chat/completions', $this->payload($member, $system, $user));
+            }
+
+            if (! $response->successful()) {
+                return [
+                    'json' => null,
+                    'usage' => [],
+                    'error' => 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 300),
+                ];
+            }
         }
 
         $usage = $this->usage($response->json('usage') ?? []);
@@ -163,6 +175,21 @@ class CouncilClient
         }
 
         return $payload;
+    }
+
+    /**
+     * True when the refusal is about requests still in flight rather than about
+     * the account being unable to afford the call at all. Retrying anything
+     * else just spends the same money twice for the same refusal.
+     */
+    protected function settlingWouldHelp(Response $response): bool
+    {
+        if ($response->status() === 429) {
+            return true;
+        }
+
+        return $response->status() === 402
+            && $response->json('error.metadata.reason') === 'in_flight_budget_exhausted';
     }
 
     protected function request(): PendingRequest

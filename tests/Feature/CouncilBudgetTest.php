@@ -112,6 +112,65 @@ class CouncilBudgetTest extends TestCase
     }
 
     /**
+     * A council refused for budget it has not spent yet.
+     *
+     * The first live council on the raised output budget lost the fable seat to
+     * HTTP 402 in_flight_budget_exhausted. askAll fires all five members at
+     * once and OpenRouter reserves each request's worth of credit while it is
+     * in flight, so a bigger max_tokens makes a five-way pool reserve five
+     * times more than any one call spends. interpret() runs after the pool has
+     * drained, which is exactly the condition the 402 tells us to wait for.
+     */
+    public function test_a_member_refused_for_in_flight_budget_is_retried_once_the_pool_has_drained(): void
+    {
+        Http::fake([
+            'openrouter.ai/*' => Http::sequence()
+                ->push([
+                    'error' => [
+                        'message' => 'This request would exceed your available credits given your current in-flight requests.',
+                        'code' => 402,
+                        'metadata' => ['reason' => 'in_flight_budget_exhausted'],
+                    ],
+                ], 402)
+                ->push([
+                    'choices' => [['message' => ['content' => '{"defeaters": [], "concessions": []}'], 'finish_reason' => 'stop']],
+                    'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5],
+                ]),
+        ]);
+
+        $result = (new CouncilClient)->ask(
+            ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+            'system',
+            'user',
+        );
+
+        $this->assertNotNull($result['json'], 'A member refused only for in-flight reservations must be recovered.');
+        $this->assertNull($result['error']);
+    }
+
+    /**
+     * The counterpart: a real out-of-credits 402 carries no in-flight reason,
+     * and retrying it just buys the same refusal twice.
+     */
+    public function test_a_genuine_payment_failure_is_not_retried(): void
+    {
+        Http::fake([
+            'openrouter.ai/*' => Http::response(['error' => ['message' => 'Insufficient credits', 'code' => 402]], 402),
+        ]);
+
+        $result = (new CouncilClient)->ask(
+            ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+            'system',
+            'user',
+        );
+
+        $this->assertNull($result['json']);
+        $this->assertStringContainsString('HTTP 402', (string) $result['error']);
+
+        Http::assertSentCount(1);
+    }
+
+    /**
      * The budget that truncated a live member.
      *
      * Replaying the 2026-09-06 falsification round against the gpt seat came
