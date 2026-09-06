@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\DTOs\MemorySearchPage;
 use App\Enums\ApiScope;
 use App\Enums\TaskStatus;
 use App\Jobs\CouncilDeliberateJob;
@@ -12,6 +13,7 @@ use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Services\ApiKeyService;
 use App\Services\Council\CouncilGate;
+use App\Services\Council\CouncilService;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\TaskStateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -202,6 +204,87 @@ class CouncilTest extends TestCase
             ->first();
 
         $this->assertNotEmpty(json_decode($transcript->content, true)['silent_in_falsification']);
+    }
+
+    /**
+     * Both packet bounds, asserted on the packet itself rather than through the
+     * HTTP recorder. An earlier version of this test watched the outgoing
+     * requests and silently measured nothing: it passed under a mutation that
+     * removed the budget entirely.
+     *
+     * @return array{summary: string, items: array<string, array<string, mixed>>}
+     */
+    private function packetFor(BuddyTask $task): array
+    {
+        $service = app(CouncilService::class);
+
+        $method = new \ReflectionMethod($service, 'packet');
+        $method->setAccessible(true);
+
+        return $method->invoke($service, $task, new MemorySearchPage([], 0, false));
+    }
+
+    /**
+     * The council writes its own rounds back as council_transcript artifacts.
+     * Feeding those into the next council's packet would have it cite its own
+     * previous reasoning as testimony, which is the one tier ADR 0009 says
+     * claims must resolve against.
+     */
+    public function test_the_packet_excludes_the_councils_own_transcripts(): void
+    {
+        $task = $this->makeCouncilTask();
+
+        $task->artifacts()->create(['type' => 'council_transcript', 'content' => 'PRIOR_DELIBERATION', 'metadata' => []]);
+        $task->artifacts()->create(['type' => 'log', 'content' => 'REAL_EVIDENCE', 'metadata' => []]);
+
+        $packet = json_encode($this->packetFor($task));
+
+        $this->assertStringContainsString('REAL_EVIDENCE', $packet, 'A real artifact must reach the packet.');
+        $this->assertStringNotContainsString('PRIOR_DELIBERATION', $packet, 'The council must not read its own transcript back as evidence.');
+    }
+
+    /**
+     * The artifact count is caller-controlled, so the per-item cap bounds
+     * nothing on its own. packet_chars is the guard that makes a generous
+     * per-item cap safe.
+     */
+    public function test_the_packet_stays_inside_its_total_character_budget(): void
+    {
+        config(['buddy_agents.council.packet_chars' => 5000, 'buddy_agents.council.artifact_chars' => 4000]);
+
+        $task = $this->makeCouncilTask();
+
+        foreach (range(1, 10) as $n) {
+            $task->artifacts()->create(['type' => 'log', 'content' => str_repeat('x', 4000), 'metadata' => []]);
+        }
+
+        // Measured on the artifact items themselves. Counting a character
+        // across the whole encoded packet picks up stray matches from the
+        // task's own faker-generated text and fails by one at random.
+        $artifactChars = 0;
+
+        foreach ($this->packetFor($task)['items'] as $id => $item) {
+            if (str_starts_with($id, 'A')) {
+                $artifactChars += mb_strlen($item['content']);
+            }
+        }
+
+        $this->assertGreaterThan(0, $artifactChars, 'The artifacts must actually reach the packet, or this test measures nothing.');
+
+        $this->assertLessThanOrEqual(
+            5000,
+            $artifactChars,
+            'Ten 4000-char artifacts must be clipped to the packet budget, not sent as 40000 chars.',
+        );
+
+        // Once the budget is gone the remaining artifacts must be left out, not
+        // added as empty items. Members are required to cite packet item ids,
+        // and an id that resolves to nothing is a citation trap.
+        foreach ($this->packetFor($task)['items'] as $id => $item) {
+            if (str_starts_with($id, 'A')) {
+                $this->assertNotSame('', $item['content'], sprintf('%s is an empty packet item; it should have been omitted.', $id));
+            }
+        }
     }
 
     public function test_quorum_failure_fails_the_run(): void

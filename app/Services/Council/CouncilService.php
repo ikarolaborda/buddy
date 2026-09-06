@@ -132,11 +132,37 @@ class CouncilService
             $items['E'.($i + 1)] = ['kind' => 'evidence', 'tier' => 'testimony', 'content' => is_string($evidence) ? $evidence : json_encode($evidence)];
         }
 
-        foreach ($task->artifacts()->get() as $i => $artifact) {
+        // Two bounds, because the per-item cap was never the thing at risk.
+        //
+        // A council writes its own rounds back as council_transcript artifacts,
+        // so a second council on the same task would read its previous
+        // deliberation as fresh testimony. That is worse than large: ADR 0009
+        // tiers packet items as testimony that claims must cite, and the
+        // council's own prior reasoning is not evidence about the problem.
+        //
+        // And the artifact COUNT is caller-controlled and unbounded, so a
+        // per-item cap alone bounds nothing. The total budget is the real
+        // guard; with it in place the per-item cap can afford to be generous.
+        $budget = (int) config('buddy_agents.council.packet_chars', 160000);
+        $perItem = (int) config('buddy_agents.council.artifact_chars', 16000);
+
+        $artifacts = $task->artifacts()
+            ->where('type', '!=', ArtifactType::CouncilTranscript->value)
+            ->orderByDesc('id')
+            ->get();
+
+        foreach ($artifacts as $i => $artifact) {
+            if ($budget <= 0) {
+                break;
+            }
+
+            $content = mb_substr((string) $artifact->content, 0, min($perItem, $budget));
+            $budget -= mb_strlen($content);
+
             $items['A'.($i + 1)] = [
                 'kind' => 'artifact:'.$artifact->type->value,
                 'tier' => 'testimony',
-                'content' => mb_substr((string) $artifact->content, 0, (int) config('buddy_agents.council.artifact_chars', 4000)),
+                'content' => $content,
             ];
         }
 

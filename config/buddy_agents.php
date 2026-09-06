@@ -80,6 +80,26 @@ return [
     | fill the larger budget. It was 6877 tokens at max_tokens=8000 and 6732 at
     | 24000. The ceiling was starving the answer, not restraining the thinking.
     |
+    | artifact_chars went 4000 -> 16000 and gained a packet_chars companion, for
+    | a reason that is not "the window is bigger now". Every seat carries at
+    | least a 1,000,000-token context and the packet was running about 9k-15k,
+    | so the window was never the constraint. Two other things were.
+    |
+    | The count of artifacts is caller-controlled and unbounded, so a per-item
+    | cap bounded nothing; packet_chars is the actual guard and it is what makes
+    | a generous per-item cap safe. And a council writes its own rounds back as
+    | council_transcript artifacts, so a second council on the same task read
+    | its own previous deliberation as testimony. Those are now excluded, which
+    | is a correctness fix rather than a size one: ADR 0009 tiers packet items
+    | as testimony that claims must cite, and the council's own prior reasoning
+    | is not evidence about the problem.
+    |
+    | Latency was the stated worry and this knob does not touch it. artifact_chars
+    | is read in exactly one place, the council packet. Agents waiting on buddy
+    | are on the evaluator path. Within the council itself the packet is repeated
+    | across all four rounds and the measured prompt cache hit was 9051 of 9054
+    | tokens, so it is paid for once and is close to free thereafter.
+    |
     */
 
     'council' => [
@@ -90,7 +110,8 @@ return [
         'gate_attempt_threshold' => (int) env('BUDDY_COUNCIL_GATE_ATTEMPTS', 2),
         'gate_min_reason_length' => (int) env('BUDDY_COUNCIL_GATE_MIN_REASON', 30),
         'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 420),
-        'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 4000),
+        'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 16000),
+        'packet_chars' => (int) env('BUDDY_COUNCIL_PACKET_CHARS', 160000),
         'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 24000),
         'min_positions' => 3,
         'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
