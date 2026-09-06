@@ -8,11 +8,6 @@ use Laravel\Ai\Exceptions\FailoverableException;
 
 class ErrorClassifier
 {
-    /**
-     * Only transient provider/network/rate-limit failures are worth
-     * retrying; validation, auth, and logic errors must fail immediately
-     * so the queue does not repeat work that can never succeed.
-     */
     public static function classify(\Throwable $e): ErrorClass
     {
         if ($e instanceof ConnectionException || $e instanceof FailoverableException) {
@@ -21,7 +16,35 @@ class ErrorClassifier
 
         $message = strtolower($e->getMessage());
 
-        foreach (['timeout', 'timed out', 'rate limit', 'too many requests', '429', '503', '502', 'temporarily unavailable', 'connection refused', 'connection reset'] as $marker) {
+        /*
+         * 500 and 504 were missing here while 502 and 503 were present, which
+         * is the wrong side of the line to be inconsistent on: Azure OpenAI's
+         * own 500 body says "You can retry your request", so the provider is
+         * telling us it is retryable and we were classifying it Permanent and
+         * calling fail() on the first occurrence. Matched as "status code 5xx"
+         * rather than the bare number, because a bare "500" also appears in
+         * token counts and byte sizes inside otherwise permanent messages.
+         */
+        $markers = [
+            'timeout',
+            'timed out',
+            'rate limit',
+            'too many requests',
+            '429',
+            'status code 500',
+            'status code 502',
+            'status code 503',
+            'status code 504',
+            '502',
+            '503',
+            'server had an error',
+            'temporarily unavailable',
+            'service unavailable',
+            'connection refused',
+            'connection reset',
+        ];
+
+        foreach ($markers as $marker) {
             if (str_contains($message, $marker)) {
                 return ErrorClass::Transient;
             }

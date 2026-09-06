@@ -149,7 +149,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'buddy-worker'
           image: '${acrLoginServer}/buddy:${imageTag}'
-          command: ['php', 'artisan', 'queue:work', 'redis', '--timeout=210', '--tries=3', '--max-jobs=500']
+          command: ['php', 'artisan', 'queue:work', 'redis', '--timeout=960', '--tries=3', '--max-jobs=500']
           resources: {
             cpu: json('0.5')
             memory: '1Gi'

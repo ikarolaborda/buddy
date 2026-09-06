@@ -19,7 +19,7 @@ return [
 
     'max_evaluation_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
 
-    'evaluation_timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
+    'evaluation_timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
 
     /*
     |--------------------------------------------------------------------------
@@ -135,14 +135,28 @@ return [
     | queue retry_after. Breaking this ordering redelivers still-running
     | jobs. Tune from observed model latency.
     |
+    | Two corrections after the 2026-09-05 gpt-6-astra cutover:
+    |
+    | The numbers were sized for a model answering in about 45s. gpt-6-astra
+    | measures about 67s on a comparable prompt and production prompts are
+    | larger, so a 120s provider timeout stopped having useful headroom and
+    | three of four evaluations died as ConnectionException at exactly 120.0s.
+    |
+    | 'provider' now reads the SAME env var that config/buddy_agents.php reads
+    | for the agent profiles. It previously read BUDDY_PROVIDER_TIMEOUT, which
+    | nothing consumed, while the value actually sent to the HTTP client came
+    | from BUDDY_EVALUATION_TIMEOUT. Two knobs, one of them decorative, and the
+    | invariant documented here described numbers no code read. One env var now
+    | drives both so they cannot drift apart again.
+    |
     */
 
     'timeouts' => [
-        'provider' => (int) env('BUDDY_PROVIDER_TIMEOUT', 120),
-        'job' => (int) env('BUDDY_JOB_TIMEOUT', 180),
-        'worker' => (int) env('BUDDY_WORKER_TIMEOUT', 210),
-        'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 240),
-        'lease' => (int) env('BUDDY_TASK_LEASE_SECONDS', 300),
+        'provider' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
+        'job' => (int) env('BUDDY_JOB_TIMEOUT', 600),
+        'worker' => (int) env('BUDDY_WORKER_TIMEOUT', 960),
+        'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 1200),
+        'lease' => (int) env('BUDDY_TASK_LEASE_SECONDS', 1200),
         'council_job' => (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 900),
         'council_lease' => (int) env('BUDDY_COUNCIL_LEASE_SECONDS', 1200),
     ],

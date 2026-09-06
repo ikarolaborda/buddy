@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\ErrorClass;
+use App\Enums\TaskStatus;
 use App\Models\BuddyTask;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\TaskStateService;
@@ -23,7 +24,7 @@ use Illuminate\Support\Str;
 
 #[Tries(3)]
 #[Backoff(10, 30, 60)]
-#[Timeout(180)]
+#[Timeout(600)]
 #[FailOnTimeout]
 class EvaluateTaskJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
@@ -94,6 +95,32 @@ class EvaluateTaskJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
             throw $e;
         }
+    }
+
+    /**
+     * The queue has given up on this job.
+     *
+     * This exists because executeRun no longer marks the task Failed on a
+     * transient error: doing so made the task terminal, and handle() returns
+     * early on a terminal task, so every retry was a no-op. With that removed a
+     * task whose attempts are all exhausted would otherwise sit in Evaluating
+     * for ever, so the terminal transition moves here, to the one point that
+     * means "no further attempt is coming".
+     */
+    public function failed(?\Throwable $e): void
+    {
+        $this->task->refresh();
+
+        if ($this->task->isTerminal()) {
+            return;
+        }
+
+        Log::error('Evaluation failed after all attempts', [
+            'task_ulid' => $this->task->ulid,
+            'error' => $e?->getMessage(),
+        ]);
+
+        app(TaskStateService::class)->transition($this->task, TaskStatus::Failed);
     }
 
     /**

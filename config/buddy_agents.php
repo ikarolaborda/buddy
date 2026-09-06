@@ -99,14 +99,14 @@ return [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'azure'),
             'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
-            'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
+            'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 1.0,
         ],
         'prompt-refiner' => [
             'provider' => env('BUDDY_REFINER_PROVIDER', 'azure'),
             'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
-            'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 120),
+            'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 1.0,
         ],

@@ -14,6 +14,7 @@ use App\DTOs\MemorySearchPage;
 use App\DTOs\ProblemPacket;
 use App\DTOs\RefinementResult;
 use App\Enums\ArtifactType;
+use App\Enums\ErrorClass;
 use App\Enums\RunStatus;
 use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
@@ -25,6 +26,7 @@ use App\Models\PromptVersion;
 use App\Models\TaskFeedback;
 use App\Services\Council\CouncilService;
 use App\Services\Observability\LangSmithTracer;
+use App\Support\ErrorClassifier;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -261,8 +263,27 @@ class EvaluatorOptimizerService
                 'completed_at' => now(),
             ]);
 
-            if (! $task->isTerminal() && $task->status === TaskStatus::Evaluating) {
-                $this->state->transition($task, TaskStatus::Failed);
+            /*
+             * Only a PERMANENT error may move the task to Failed here.
+             *
+             * Failed is terminal, and EvaluateTaskJob::handle() opens with a
+             * refresh() and an isTerminal() early return. So marking the task
+             * Failed on a transient error meant the queue's retry re-entered,
+             * saw a terminal task and returned having done nothing: #[Tries(3)]
+             * has been decorative for every transient failure since this was
+             * written. It showed up as four failed runs producing only one
+             * failed_jobs row, because the transient attempts "succeeded" by
+             * returning early instead of failing.
+             *
+             * The run row is still marked Failed either way, so a retried task
+             * accumulates one run per attempt and the history stays honest.
+             * When the queue finally gives up, EvaluateTaskJob::failed() is what
+             * moves the task to Failed.
+             */
+            if (ErrorClassifier::classify($e) === ErrorClass::Permanent) {
+                if (! $task->isTerminal() && $task->status === TaskStatus::Evaluating) {
+                    $this->state->transition($task, TaskStatus::Failed);
+                }
             }
 
             $this->tracer->traceEvaluation(
