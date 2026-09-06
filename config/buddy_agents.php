@@ -47,6 +47,17 @@ return [
     | modal outcome, not a failure. Chairman narrates; PHP computes the
     | ranking. Cost cap counts council runs per UTC day across clients.
     |
+    | The 'gpt' seat moved from gpt-5.6-sol to gpt-6-astra on 2026-09-06. Two
+    | things made that safe to do, both checked rather than assumed. OpenRouter
+    | normalises `max_tokens`, which direct Azure rejects for this model in
+    | favour of max_completion_tokens, so CouncilClient's payload is accepted
+    | unchanged; verified by a live 200 with the exact payload including
+    | reasoning_effort=xhigh. And the seat is 5x the price per token, which the
+    | 8000-token cap and the 10-councils-per-day limit keep bounded.
+    |
+    | It also forced the timeout raise below: the seat is about 45% slower per
+    | call, and the council was already running at 811s against a 900s ceiling.
+    |
     */
 
     'council' => [
@@ -62,7 +73,7 @@ return [
         'min_positions' => 3,
         'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
         'members' => [
-            ['key' => 'gpt', 'model' => 'openai/gpt-5.6-sol', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+            ['key' => 'gpt', 'model' => 'openai/gpt-6-astra', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
             ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
             ['key' => 'opus', 'model' => 'anthropic/claude-opus-4.8', 'family' => 'anthropic'],
             ['key' => 'sonnet', 'model' => 'anthropic/claude-sonnet-5', 'family' => 'anthropic'],

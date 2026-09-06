@@ -149,7 +149,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'buddy-worker'
           image: '${acrLoginServer}/buddy:${imageTag}'
-          command: ['php', 'artisan', 'queue:work', 'redis', '--timeout=960', '--tries=3', '--max-jobs=500']
+          command: ['php', 'artisan', 'queue:work', 'redis', '--timeout=1860', '--tries=3', '--max-jobs=500']
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -179,7 +179,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'LANGSMITH_TRACING', value: 'true' }
             // Must exceed the council job timeout (900s) or Redis redelivers
             // a live council mid-deliberation (ADR 0009 timing chain).
-            { name: 'REDIS_QUEUE_RETRY_AFTER', value: '1200' }
+            { name: 'REDIS_QUEUE_RETRY_AFTER', value: '2400' }
             { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
             { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
             { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }

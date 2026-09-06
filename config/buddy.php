@@ -154,11 +154,23 @@ return [
     'timeouts' => [
         'provider' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
         'job' => (int) env('BUDDY_JOB_TIMEOUT', 600),
-        'worker' => (int) env('BUDDY_WORKER_TIMEOUT', 960),
-        'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 1200),
+        'worker' => (int) env('BUDDY_WORKER_TIMEOUT', 1860),
+        'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 2400),
         'lease' => (int) env('BUDDY_TASK_LEASE_SECONDS', 1200),
-        'council_job' => (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 900),
-        'council_lease' => (int) env('BUDDY_COUNCIL_LEASE_SECONDS', 1200),
+        /*
+         * Raised from 900/1200 on 2026-09-06, on measurement rather than
+         * caution. The seven councils that have completed took 336, 342, 486,
+         * 555, 559, 677 and 811 seconds. The longest was inside 10% of the 900s
+         * ceiling BEFORE the 'gpt' seat moved to a model measured about 45%
+         * slower per call, and only two of the four council stages are gated by
+         * a member, so the worst case lands somewhere over the old ceiling.
+         *
+         * retry_after must stay above council_job or Redis redelivers a council
+         * that is still deliberating, which would double-charge a run that
+         * already costs five model calls twice over.
+         */
+        'council_job' => (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 1800),
+        'council_lease' => (int) env('BUDDY_COUNCIL_LEASE_SECONDS', 2400),
     ],
 
     /*

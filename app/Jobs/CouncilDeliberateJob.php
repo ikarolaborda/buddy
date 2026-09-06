@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
  * retry_after or a still-deliberating council gets redelivered.
  */
 #[Tries(1)]
-#[Timeout(900)]
+#[Timeout(1800)]
 #[FailOnTimeout]
 class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {

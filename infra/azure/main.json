@@ -1996,7 +1996,7 @@
                         "artisan",
                         "queue:work",
                         "redis",
-                        "--timeout=960",
+                        "--timeout=1860",
                         "--tries=3",
                         "--max-jobs=500"
                       ],
