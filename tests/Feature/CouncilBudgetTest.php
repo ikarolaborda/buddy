@@ -76,6 +76,25 @@ class CouncilBudgetTest extends TestCase
     }
 
     /**
+     * The per-call ceiling has to clear how long a call actually takes.
+     *
+     * Measured on the real falsification payload at the current output budget:
+     * 221 seconds, finish_reason=stop, valid JSON. Against the old 300s cap that
+     * is 26% headroom, which is the same margin that made the council ceiling
+     * unsafe in the first place.
+     */
+    public function test_a_member_call_ceiling_clears_the_longest_measured_call(): void
+    {
+        $measured = 221;
+
+        $this->assertGreaterThan(
+            $measured * 1.5,
+            (int) config('buddy_agents.council.call_timeout'),
+            'A member call takes about 221s at the current output budget; the cap must leave real margin over that.',
+        );
+    }
+
+    /**
      * Each member call is capped separately, and that cap has to fit inside the
      * whole-council ceiling several times over: the council makes four
      * sequential stages, two of which are gated by the slowest member.

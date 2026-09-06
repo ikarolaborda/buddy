@@ -69,6 +69,17 @@ return [
     | seat, which the daily cap bounds at about $36/day if every council ran
     | every seat to its ceiling.
     |
+    | Raising the budget makes the call longer, so call_timeout moved 300 -> 420
+    | in the same breath. The same replay at 24000 finished in 221s with
+    | finish_reason=stop and valid JSON, spending 6732 reasoning tokens and 4044
+    | on the answer. 221s against a 300s ceiling is the thin margin that started
+    | this whole thread; 420 leaves real room and still fits four sequential
+    | stages inside the 1800s council_job.
+    |
+    | Worth recording because it was the live worry: reasoning did NOT expand to
+    | fill the larger budget. It was 6877 tokens at max_tokens=8000 and 6732 at
+    | 24000. The ceiling was starving the answer, not restraining the thinking.
+    |
     */
 
     'council' => [
@@ -78,7 +89,7 @@ return [
         'gate_enabled' => (bool) env('BUDDY_COUNCIL_GATE', true),
         'gate_attempt_threshold' => (int) env('BUDDY_COUNCIL_GATE_ATTEMPTS', 2),
         'gate_min_reason_length' => (int) env('BUDDY_COUNCIL_GATE_MIN_REASON', 30),
-        'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 300),
+        'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 420),
         'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 4000),
         'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 24000),
         'min_positions' => 3,
