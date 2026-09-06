@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Council\CouncilClient;
 use Tests\TestCase;
 
 /**
@@ -88,5 +89,28 @@ class CouncilBudgetTest extends TestCase
             $job,
             'The council runs four sequential stages, so its ceiling must fit at least four full member calls.',
         );
+    }
+
+    /**
+     * Reasoning tokens are billed as output but do not always appear inside
+     * completion_tokens, so a council seating a reasoning model was reporting
+     * less than it cost. The evaluator path already captured them through
+     * laravel/ai; this pins the council's own mapper.
+     */
+    public function test_the_council_records_reasoning_tokens(): void
+    {
+        $client = new CouncilClient;
+
+        $usage = (fn (array $raw) => $this->usage($raw))->call($client, [
+            'prompt_tokens' => 100,
+            'completion_tokens' => 50,
+            'completion_tokens_details' => ['reasoning_tokens' => 900],
+        ]);
+
+        $this->assertSame(900, $usage['reasoning_tokens'], 'Reasoning tokens are billed and must be recorded.');
+
+        $merged = (fn (array $a, array $b) => $this->mergeUsage($a, $b))->call($client, $usage, $usage);
+
+        $this->assertSame(1800, $merged['reasoning_tokens'], 'Merging per-member usage must carry reasoning tokens too.');
     }
 }

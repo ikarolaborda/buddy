@@ -208,11 +208,19 @@ class CouncilClient
     /**
      * @return array<string, int>
      */
+    /**
+     * Reasoning tokens are billed as output but are not inside
+     * completion_tokens on every provider, so a council seating a reasoning
+     * model was under-reporting what it actually cost. laravel/ai already
+     * carries them on the evaluator path (Usage::$reasoningTokens); this is the
+     * council's own mapper catching up, now that the 'gpt' seat is one.
+     */
     protected function usage(array $raw): array
     {
         return [
             'prompt_tokens' => (int) ($raw['prompt_tokens'] ?? 0),
             'completion_tokens' => (int) ($raw['completion_tokens'] ?? 0),
+            'reasoning_tokens' => (int) ($raw['completion_tokens_details']['reasoning_tokens'] ?? 0),
         ];
     }
 
@@ -226,6 +234,7 @@ class CouncilClient
         return [
             'prompt_tokens' => ($a['prompt_tokens'] ?? 0) + ($b['prompt_tokens'] ?? 0),
             'completion_tokens' => ($a['completion_tokens'] ?? 0) + ($b['completion_tokens'] ?? 0),
+            'reasoning_tokens' => ($a['reasoning_tokens'] ?? 0) + ($b['reasoning_tokens'] ?? 0),
         ];
     }
 }
