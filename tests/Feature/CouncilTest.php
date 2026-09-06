@@ -133,6 +133,77 @@ class CouncilTest extends TestCase
         $this->assertSame(TaskStatus::Completed, $task->refresh()->status);
     }
 
+    /**
+     * A member can answer R1 and then return nothing usable in R2.
+     *
+     * That happened in production on 2026-09-06: two of five seats returned an
+     * unparseable attack, so the falsification round ran on three members while
+     * the verdict still reported five present. R2 is the round the whole council
+     * exists for, and silence there has to be visible in the verdict.
+     */
+    public function test_a_member_silent_in_the_falsification_round_is_disclosed(): void
+    {
+        $frame = $this->or([
+            'hypotheses' => [['id' => 'H1', 'statement' => 'the queue redelivers', 'kill_conditions' => ['no duplicates in the log']]],
+        ]);
+
+        $position = $this->or([
+            'stances' => [['hypothesis_id' => 'H1', 'stance' => 'support', 'evidence_refs' => ['E1'], 'reasoning_only' => false, 'reasoning' => 'cited', 'confidence' => 0.7]],
+            'new_hypotheses' => [],
+            'proposed_falsifiers' => [],
+        ]);
+
+        $attack = $this->or(['defeaters' => [], 'concessions' => []]);
+
+        // What a truncated reasoning reply actually looks like: the response is
+        // cut off before any JSON closes, and the one re-ask is cut off too.
+        $truncated = [
+            'choices' => [['message' => ['content' => '{"defeaters": [{"hypothesis_id": "H1", "target_member'], 'finish_reason' => 'length']],
+            'usage' => ['prompt_tokens' => 4000, 'completion_tokens' => 8000, 'completion_tokens_details' => ['reasoning_tokens' => 7960]],
+        ];
+
+        $verdict = $this->or([
+            'accepted' => true,
+            'confidence' => 'low',
+            'summary' => 'H1 survives.',
+            'recommended_plan' => [],
+            'defeated' => [],
+        ]);
+
+        Http::fake([
+            'openrouter.ai/*' => Http::sequence()
+                ->push($frame)
+                ->push($position)->push($position)->push($position)->push($position)->push($position)
+                ->push($truncated)->push($attack)->push($attack)->push($attack)->push($attack)
+                ->push($truncated)
+                ->push($verdict),
+        ]);
+
+        $task = $this->makeCouncilTask();
+
+        $verdict = app(EvaluatorOptimizerService::class)->council($task);
+
+        $this->assertNotEmpty(
+            $verdict['members_silent_in_falsification'],
+            'A member that returned nothing usable in R2 must be named in the verdict, not counted as a participant.',
+        );
+
+        $this->assertEmpty(
+            $verdict['members_absent'],
+            'This member answered R1, so it is not an R1 absentee; the two disclosures are different facts.',
+        );
+
+        // Every round checkpoint is also stored as a council_transcript; the
+        // full transcript is the last one written.
+        $transcript = BuddyArtifact::query()
+            ->where('buddy_task_id', $task->id)
+            ->where('type', 'council_transcript')
+            ->orderByDesc('id')
+            ->first();
+
+        $this->assertNotEmpty(json_decode($transcript->content, true)['silent_in_falsification']);
+    }
+
     public function test_quorum_failure_fails_the_run(): void
     {
         $frame = $this->or([

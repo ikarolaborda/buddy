@@ -85,6 +85,14 @@ class CouncilService
         );
         $this->tallyAll($usage, $attacks);
         $transcript['rounds']['attacks'] = array_map(fn ($a) => $a['json'] ?? ['error' => $a['error']], $attacks);
+
+        // A member can answer R1 and then return nothing usable in R2. It is
+        // still counted present, so a verdict could report five members while
+        // three actually attacked. R2 is the falsification round; silence
+        // there is the absence that matters most and must be disclosed.
+        $silent = array_values(array_keys(array_filter($attacks, fn ($a) => ($a['json'] ?? null) === null)));
+        $transcript['silent_in_falsification'] = $silent;
+
         $this->checkpoint($task, 'attacks', $transcript['rounds']['attacks']);
         $this->beat($task, $claimOwner);
 
@@ -104,7 +112,7 @@ class CouncilService
             throw new \RuntimeException('Council verdict narration failed: '.($verdictReply['error'] ?? 'unknown'));
         }
 
-        $verdict = $this->assembleVerdict($verdictReply['json'], $tally, $present, $absent);
+        $verdict = $this->assembleVerdict($verdictReply['json'], $tally, $present, $absent, $silent);
         $transcript['rounds']['verdict'] = $verdictReply['json'];
 
         return ['verdict' => $verdict, 'transcript' => $transcript, 'usage' => $usage];
@@ -355,7 +363,7 @@ class CouncilService
     /**
      * @return array<string, mixed>
      */
-    protected function assembleVerdict(array $narration, array $tally, array $present, array $absent): array
+    protected function assembleVerdict(array $narration, array $tally, array $present, array $absent, array $silent = []): array
     {
         return [
             'output_mode' => $tally['output_mode'],
@@ -373,6 +381,7 @@ class CouncilService
             'mechanical_tally' => $tally,
             'members_present' => array_column($present, 'key'),
             'members_absent' => $absent,
+            'members_silent_in_falsification' => $silent,
         ];
     }
 

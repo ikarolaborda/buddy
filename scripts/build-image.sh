@@ -95,14 +95,20 @@ the credited subscription, and both subscriptions are called "Azure subscription
          --image ${REGISTRY}.azurecr.io/buddy:${SHA}
        az containerapp job start  -n caj-buddy-migrate-credit -g rg-buddy-credit --subscription \$SUB
 
-  2. deploy the API at ZERO traffic and probe the per-revision FQDN first:
+  2. deploy the API. NOTE: ca-buddy-api-credit runs in Single revision mode, so
+     the new revision takes 100% of traffic the moment it is created. There is
+     no zero-traffic window to probe in, and the rollback is a redeploy of the
+     previous image rather than a weight change:
        az containerapp update -n ca-buddy-api-credit -g rg-buddy-credit --subscription \$SUB \\
          --image ${REGISTRY}.azurecr.io/buddy:${SHA}-octane --revision-suffix oct-${SHA}
-       curl https://ca-buddy-api-credit--oct-${SHA}.wonderfuldune-56e52a9b.northeurope.azurecontainerapps.io/api/health
+       curl https://ca-buddy-api-credit.wonderfuldune-56e52a9b.northeurope.azurecontainerapps.io/api/health
 
-  3. only then shift traffic, keeping the previous revision for rollback:
-       az containerapp ingress traffic set -n ca-buddy-api-credit -g rg-buddy-credit --subscription \$SUB \\
-         --revision-weight ca-buddy-api-credit--oct-${SHA}=100 <previous>=0
+     To get a real pre-traffic probe, switch the app to Multiple revision mode
+     first; until then, step 3 is a no-op and step 2 is the cutover.
+
+  3. confirm the cutover rather than performing it:
+       az containerapp show -n ca-buddy-api-credit -g rg-buddy-credit --subscription \$SUB \\
+         --query "properties.configuration.ingress.traffic"
 
   4. the worker and the remaining jobs run the fpm tag, so they need repointing too:
        az containerapp update -n ca-buddy-worker-credit -g rg-buddy-credit --subscription \$SUB \\

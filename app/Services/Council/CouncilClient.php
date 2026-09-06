@@ -98,13 +98,24 @@ class CouncilClient
             return ['json' => $json, 'usage' => $usage, 'error' => null];
         }
 
-        // One cheap re-ask before declaring the member absent: dropping
-        // an expensive reply over malformed JSON is bad economics.
+        // OpenRouter counts reasoning inside completion_tokens, so max_tokens is
+        // one budget shared by thinking and answering. A seat that reasons hard
+        // can spend almost all of it before the JSON starts and get cut off
+        // mid-object: on 2026-09-06 the gpt seat returned finish_reason=length
+        // with 6877 of its 8000 tokens spent reasoning. Re-asking on the same
+        // budget reproduces the same truncation and bills for it twice, so the
+        // retry only earns its keep if it buys the answer more room.
+        $truncated = $response->json('choices.0.finish_reason') === 'length';
+        $reasoningSpent = $usage['reasoning_tokens'];
+
         try {
             $retry = $this->request()->post('/chat/completions', $this->payload(
                 $member,
                 $system,
-                $user."\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, no prose.",
+                $truncated
+                    ? $user."\n\nYour previous reply was cut off before the JSON closed. Answer more briefly and return ONLY the complete JSON object."
+                    : $user."\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, no prose.",
+                $truncated ? 'low' : null,
             ));
 
             if ($retry->successful()) {
@@ -119,13 +130,21 @@ class CouncilClient
             Log::warning('Council re-ask failed', ['member' => $member['key'] ?? '?', 'error' => $e->getMessage()]);
         }
 
-        return ['json' => null, 'usage' => $usage, 'error' => 'unparseable response'];
+        // Distinct errors, because they call for different fixes: truncation is
+        // a budget the operator sets, malformed JSON is the model's fault.
+        return [
+            'json' => null,
+            'usage' => $usage,
+            'error' => $truncated
+                ? 'truncated at max_output_tokens ('.$reasoningSpent.' reasoning tokens)'
+                : 'unparseable response',
+        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    protected function payload(array $member, string $system, string $user): array
+    protected function payload(array $member, string $system, string $user, ?string $reasoningEffort = null): array
     {
         $payload = [
             'model' => $member['model'],
@@ -134,11 +153,13 @@ class CouncilClient
                 ['role' => 'user', 'content' => $user],
             ],
             'response_format' => ['type' => 'json_object'],
-            'max_tokens' => (int) config('buddy_agents.council.max_output_tokens', 8000),
+            'max_tokens' => (int) config('buddy_agents.council.max_output_tokens', 24000),
         ];
 
-        if (isset($member['reasoning_effort'])) {
-            $payload['reasoning_effort'] = $member['reasoning_effort'];
+        $effort = $reasoningEffort ?? ($member['reasoning_effort'] ?? null);
+
+        if ($effort !== null) {
+            $payload['reasoning_effort'] = $effort;
         }
 
         return $payload;

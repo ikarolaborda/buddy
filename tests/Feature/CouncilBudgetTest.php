@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\Council\CouncilClient;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -92,10 +93,80 @@ class CouncilBudgetTest extends TestCase
     }
 
     /**
-     * Reasoning tokens are billed as output but do not always appear inside
-     * completion_tokens, so a council seating a reasoning model was reporting
-     * less than it cost. The evaluator path already captured them through
-     * laravel/ai; this pins the council's own mapper.
+     * The budget that truncated a live member.
+     *
+     * Replaying the 2026-09-06 falsification round against the gpt seat came
+     * back finish_reason=length, completion_tokens=8000, reasoning_tokens=6877.
+     * Reasoning had taken 86% of the shared budget and the JSON was cut off
+     * mid-string. Successful attacks from the other seats ran 688-1919 tokens,
+     * so the answer is small; it is the thinking that has to fit alongside it.
+     */
+    public function test_the_output_budget_leaves_room_to_answer_after_reasoning(): void
+    {
+        $observedReasoning = 6877;
+        $observedAnswer = 1919;
+
+        $this->assertGreaterThan(
+            $observedReasoning + $observedAnswer,
+            (int) config('buddy_agents.council.max_output_tokens'),
+            'max_tokens is shared by reasoning and response, so it must clear both or the member is cut off mid-JSON.',
+        );
+    }
+
+    /**
+     * A truncated reply and a malformed one need different responses. Re-asking
+     * a truncated member on the same budget reproduces the truncation and bills
+     * for it twice, which is exactly what production did.
+     */
+    public function test_a_truncated_reply_is_retried_with_less_reasoning_and_named_as_truncation(): void
+    {
+        Http::fake([
+            'openrouter.ai/*' => Http::sequence()
+                ->push([
+                    'choices' => [['message' => ['content' => '{"defeaters": [{"hypo'], 'finish_reason' => 'length']],
+                    'usage' => ['prompt_tokens' => 9054, 'completion_tokens' => 8000, 'completion_tokens_details' => ['reasoning_tokens' => 6877]],
+                ])
+                ->push([
+                    'choices' => [['message' => ['content' => '{"defeaters": [{"hypo'], 'finish_reason' => 'length']],
+                    'usage' => ['prompt_tokens' => 9054, 'completion_tokens' => 8000, 'completion_tokens_details' => ['reasoning_tokens' => 6877]],
+                ]),
+        ]);
+
+        $client = new CouncilClient;
+
+        $result = $client->ask(
+            ['key' => 'gpt', 'model' => 'openai/gpt-6-astra', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+            'system',
+            'user',
+        );
+
+        $this->assertNull($result['json']);
+        $this->assertStringContainsString('truncated', (string) $result['error']);
+        $this->assertStringContainsString('6877', (string) $result['error']);
+
+        $sent = [];
+        Http::recorded(function ($request) use (&$sent) {
+            $sent[] = $request->data();
+
+            return true;
+        });
+
+        $this->assertCount(2, $sent);
+        $this->assertSame('xhigh', $sent[0]['reasoning_effort'], 'The first call uses the seat\'s configured effort.');
+        $this->assertSame('low', $sent[1]['reasoning_effort'], 'The re-ask must buy the answer room, not repeat the same truncation.');
+    }
+
+    /**
+     * OpenRouter reports reasoning tokens INSIDE completion_tokens and breaks
+     * them out under completion_tokens_details, so capturing them does not
+     * change the council's total cost; it says how much of that total was
+     * thinking rather than answer.
+     *
+     * That split is what sizes max_output_tokens. max_tokens caps reasoning and
+     * response together, so a seat whose reasoning is most of its completion
+     * budget has correspondingly less room to answer in. Without this field the
+     * transcript cannot tell a member that had nothing to say from one that ran
+     * out of room to say it.
      */
     public function test_the_council_records_reasoning_tokens(): void
     {

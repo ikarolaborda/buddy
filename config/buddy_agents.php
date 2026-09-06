@@ -53,10 +53,21 @@ return [
     | favour of max_completion_tokens, so CouncilClient's payload is accepted
     | unchanged; verified by a live 200 with the exact payload including
     | reasoning_effort=xhigh. And the seat is 5x the price per token, which the
-    | 8000-token cap and the 10-councils-per-day limit keep bounded.
+    | output cap and the 10-councils-per-day limit keep bounded.
     |
     | It also forced the timeout raise below: the seat is about 45% slower per
     | call, and the council was already running at 811s against a 900s ceiling.
+    |
+    | max_output_tokens went 8000 -> 24000 on 2026-09-06 for a measured reason.
+    | OpenRouter bills reasoning inside completion_tokens, so max_tokens is one
+    | budget shared by thinking and answering. Replaying the production
+    | falsification round against this seat returned finish_reason=length with
+    | 6877 of its 8000 tokens spent reasoning, leaving 1123 for an answer that
+    | needed about 2100: the JSON was cut mid-string and the member dropped out
+    | of the round. 24000 clears three times the observed reasoning plus a full
+    | answer. It also triples the worst case per call, to roughly $1.20 for this
+    | seat, which the daily cap bounds at about $36/day if every council ran
+    | every seat to its ceiling.
     |
     */
 
@@ -69,7 +80,7 @@ return [
         'gate_min_reason_length' => (int) env('BUDDY_COUNCIL_GATE_MIN_REASON', 30),
         'call_timeout' => (int) env('BUDDY_COUNCIL_CALL_TIMEOUT', 300),
         'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 4000),
-        'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 8000),
+        'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 24000),
         'min_positions' => 3,
         'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
         'members' => [
