@@ -22,7 +22,7 @@ class CouncilProfileTest extends TestCase
         $this->assertSame('openrouter', config('buddy_agents.council.profile'));
         $this->assertSame('https://openrouter.ai/api/v1', config('buddy_agents.council.base_url'));
         $this->assertSame('ai.providers.openrouter.key', config('buddy_agents.council.credential'));
-        $this->assertSame('anthropic/claude-fable-5', config('buddy_agents.council.chairman.model'));
+        $this->assertSame('anthropic/claude-fable-5.1', config('buddy_agents.council.chairman.model'));
 
         $this->assertSame(
             ['openai/gpt-6-astra', 'anthropic/claude-fable-5', 'anthropic/claude-opus-4.8', 'anthropic/claude-sonnet-5', 'google/gemini-3.1-pro-preview'],

@@ -81,6 +81,11 @@ class ShippedModelDefaultsTest extends TestCase
     {
         $agents = $this->shippedConfig('buddy_agents', 'BUDDY_MODEL');
 
-        $this->assertSame('anthropic/claude-fable-5', $agents['council']['chairman']['model']);
+        $this->assertSame('anthropic/claude-fable-5.1', $agents['council']['chairman']['model']);
+
+        // The invariant, stated so it survives the next roster edit: unsetting
+        // the evaluator knob must leave the chair on its own provider slug.
+        $this->assertStringStartsWith('anthropic/', $agents['council']['chairman']['model']);
+        $this->assertSame('anthropic', $agents['council']['chairman']['family']);
     }
 }

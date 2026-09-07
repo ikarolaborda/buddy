@@ -29,13 +29,36 @@ class CouncilBudgetTest extends TestCase
     }
 
     /**
-     * The chairman is deliberately NOT the same swap. ADR 0009 discloses family
-     * skew in every verdict, and moving the chair changes that disclosure.
+     * The chairman did not follow the member to OpenAI. ADR 0009 discloses
+     * family skew in every verdict, so the FAMILY is the load-bearing
+     * invariant here, not the exact model string.
      */
-    public function test_the_chairman_did_not_move_with_the_member(): void
+    public function test_the_chairman_stayed_in_the_anthropic_family_when_the_member_moved(): void
     {
-        $this->assertSame('anthropic/claude-fable-5', config('buddy_agents.council.chairman.model'));
         $this->assertSame('anthropic', config('buddy_agents.council.chairman.family'));
+        $this->assertSame('anthropic/claude-fable-5.1', config('buddy_agents.council.chairman.model'));
+    }
+
+    /**
+     * The chair moved to fable-5.1 on 2026-09-07 while the 'fable' seat stayed
+     * on fable-5, and the version gap is the point.
+     *
+     * ADR 0009 point 4 discloses that the chairman is also a member model, and
+     * until then that was literally true: one model held both the chair and a
+     * seat, so the verdict narrator was the same weights as one of the voices
+     * it narrated. Splitting the versions removes the identical-model overlap
+     * without touching the disclosed family skew.
+     */
+    public function test_the_chairman_is_not_the_identical_model_to_any_member(): void
+    {
+        $chairman = config('buddy_agents.council.chairman.model');
+        $members = array_column(config('buddy_agents.council.members'), 'model');
+
+        $this->assertNotContains(
+            $chairman,
+            $members,
+            'The chairman narrating a verdict must not be the identical model to a seat it is narrating.',
+        );
     }
 
     /**

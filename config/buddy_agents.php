@@ -33,6 +33,22 @@
 
 $councilProfiles = [
 
+    /*
+     * The chair runs claude-fable-5.1 while the 'fable' seat stays on
+     * claude-fable-5. That version gap is deliberate. ADR 0009 point 4 discloses
+     * that the chairman is also a member model, and until 2026-09-07 that was
+     * literally true here: one model held both the chair and a seat. Splitting
+     * the versions keeps the chair in the Anthropic family, so the disclosed
+     * family skew is unchanged, while removing the identical-model overlap.
+     *
+     * Chair reliability matters more than chair capability. CouncilService
+     * aborts the WHOLE run when the chairman returns unparseable JSON, after
+     * paying for all eleven prior calls, whereas a member returning nothing is
+     * merely recorded absent and the council continues above quorum. That
+     * asymmetry is why the chair is not gpt-6-astra: it is the one seat with a
+     * measured truncation history, having spent 6877 of 8000 completion tokens
+     * reasoning, and the chairman emits the longest payload of the run.
+     */
     'openrouter' => [
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
         'credential' => 'ai.providers.openrouter.key',
@@ -40,7 +56,7 @@ $councilProfiles = [
             'HTTP-Referer' => 'https://github.com/ikarolaborda/buddy',
             'X-Title' => 'Buddy Council',
         ],
-        'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+        'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5.1', 'family' => 'anthropic'],
         'members' => [
             ['key' => 'gpt', 'model' => 'openai/gpt-6-astra', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
             ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
