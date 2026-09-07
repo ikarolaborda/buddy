@@ -105,23 +105,58 @@ class CouncilProfileTest extends TestCase
     }
 
     /**
-     * Every seat here was probed against the real falsification schema on
-     * 2026-09-07. qwq-32b returned invalid JSON, llama-3.3-70b returned valid
-     * JSON of the wrong shape and gemma-4-26b failed both trials, so none of
-     * them may be seated: a seat that cannot hold the schema drops out of the
-     * falsification round silently.
+     * The roster is the measured top five, not a reputation ranking.
+     *
+     * Eighteen candidates were probed three times each against the real
+     * falsification schema at the shipped 24000-token budget on 2026-09-07 and
+     * scored on what adjudicate() actually counts: a testimony defeat needs a
+     * resolving evidence_ref AND a verbatim kill_condition match. Mean real
+     * defeats: mistral 3.7, qwen 2.3, llama 2.0, glm-5.2 2.0, deepseek-r1 2.0.
      */
-    public function test_models_that_failed_the_schema_probe_are_not_seated(): void
+    public function test_the_roster_is_the_measured_top_five(): void
+    {
+        $expected = [
+            '@cf/mistralai/mistral-small-3.1-24b-instruct',
+            '@cf/qwen/qwen3-30b-a3b-fp8',
+            '@cf/meta/llama-4-scout-17b-16e-instruct',
+            '@cf/zai-org/glm-5.2',
+            '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+        ];
+
+        $this->assertSame($expected, array_column($this->workersAiMembers(), 'model'));
+    }
+
+    /**
+     * Two disqualifying failure modes, both measured, both of which a seat can
+     * exhibit while looking healthy from the outside.
+     *
+     * glm-5.3 and kimi-k2.7-code returned HTTP 408 from Cloudflare's own
+     * gateway on every trial: they cannot finish a falsification round at all.
+     * gpt-oss-120b is perfectly reliable and yields ZERO countable defeats,
+     * naming kill conditions verbatim while citing no resolving evidence ref,
+     * so adjudicate() records nothing from it.
+     */
+    public function test_seats_that_cannot_finish_or_cannot_defeat_are_not_seated(): void
     {
         $models = array_column($this->workersAiRoster(), 'model');
 
-        foreach (['@cf/qwen/qwq-32b', '@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/google/gemma-4-26b-a4b-it'] as $rejected) {
-            $this->assertNotContains($rejected, $models, sprintf('%s failed the JSON schema probe and must not hold a council seat.', $rejected));
+        foreach (['@cf/zai-org/glm-5.3', '@cf/moonshotai/kimi-k2.7-code'] as $timesOut) {
+            $this->assertNotContains($timesOut, $models, sprintf('%s times out (HTTP 408) on every falsification trial.', $timesOut));
         }
 
-        foreach ($models as $model) {
-            $this->assertStringStartsWith('@cf/', $model, 'A workers_ai seat must name a Workers AI model.');
-        }
+        $this->assertNotContains(
+            '@cf/openai/gpt-oss-120b',
+            $models,
+            'gpt-oss-120b produces zero countable defeats: reliable, and useless as a falsifier.',
+        );
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function workersAiMembers(): array
+    {
+        $roster = $this->workersAiRoster();
+
+        return array_slice($roster, 1);
     }
 
     /** @return array<int, array<string, mixed>> */

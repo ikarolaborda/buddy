@@ -15,14 +15,32 @@
 | config('ai.providers.openrouter.key') unconditionally, so repointing base_url
 | at another provider would have sent an OpenRouter token to it.
 |
-| The workers_ai roster was chosen by MEASUREMENT, not reputation. Every seat
-| was probed against the real falsification-round schema over Cloudflare's
-| OpenAI-compatible endpoint on 2026-09-07, and three otherwise attractive
-| models were rejected for failing it: @cf/qwen/qwq-32b returned invalid JSON,
-| @cf/meta/llama-3.3-70b returned valid JSON of the wrong shape, and
-| @cf/google/gemma-4-26b failed the schema on both trials. A seat that cannot
-| hold the schema does not merely underperform, it drops out of the
-| falsification round silently, which is the defect fixed on 2026-09-06.
+| The workers_ai roster is chosen by MEASUREMENT, not reputation. Eighteen
+| candidates were probed three times each against the real falsification-round
+| schema at the SHIPPED 24000-token budget, and scored on what adjudicate()
+| actually counts: a testimony defeat needs a resolving evidence_ref AND a
+| verbatim kill_condition match, so the metric is real defeats per trial, not
+| "produced some JSON".
+|
+| Seats, with mean real defeats: mistral-small-3.1 3.7, qwen3-30b 2.3,
+| llama-4-scout 2.0, glm-5.2 2.0, deepseek-r1-distill-qwen-32b 2.0. Chair
+| nemotron-3-120b scored 1.7 and stays in the chair, so no seat repeats a
+| family and chairman_is_member remains false.
+|
+| The previous roster was replaced because four of its five seats failed this
+| harder probe. glm-5.3 and kimi-k2.7-code returned HTTP 408 on every trial:
+| they cannot finish a falsification round inside Cloudflare's own gateway
+| limits. gpt-oss-120b is perfectly reliable and yet yields ZERO countable
+| defeats, naming kill conditions verbatim while citing no resolving evidence
+| ref. deepseek-v4-pro bought one defeat for 2932 neurons and 121 seconds.
+|
+| Two measurement traps had to be cleared first, both of which would have
+| produced the wrong roster. Scoring with a strict JSON parse is unfair,
+| because CouncilClient::extractJson also recovers fenced blocks, the substring
+| between the outermost braces and trailing-comma damage. And probing at a
+| small max_tokens starves reasoning models into returning EMPTY content, which
+| is the same defect fixed on 2026-09-06: six models went from 0/3 to 3/3 purely
+| by raising the probe budget to the one the profile actually ships.
 |
 | The six seats carry SIX DISTINCT FAMILIES with no overlap, against the
 | openrouter roster's three Anthropic seats plus one OpenAI and one Google. ADR
@@ -72,11 +90,11 @@ $councilProfiles = [
         'headers' => ['X-Title' => 'Buddy Council'],
         'chairman' => ['key' => 'chairman', 'model' => '@cf/nvidia/nemotron-3-120b-a12b', 'family' => 'nvidia'],
         'members' => [
-            ['key' => 'gpt', 'model' => '@cf/openai/gpt-oss-120b', 'family' => 'openai'],
-            ['key' => 'glm', 'model' => '@cf/zai-org/glm-5.3', 'family' => 'zhipu'],
-            ['key' => 'deepseek', 'model' => '@cf/deepseek-ai/deepseek-v4-pro-0813', 'family' => 'deepseek'],
-            ['key' => 'kimi', 'model' => '@cf/moonshotai/kimi-k2.7-code', 'family' => 'moonshot'],
             ['key' => 'mistral', 'model' => '@cf/mistralai/mistral-small-3.1-24b-instruct', 'family' => 'mistral'],
+            ['key' => 'qwen', 'model' => '@cf/qwen/qwen3-30b-a3b-fp8', 'family' => 'qwen'],
+            ['key' => 'llama', 'model' => '@cf/meta/llama-4-scout-17b-16e-instruct', 'family' => 'meta'],
+            ['key' => 'glm', 'model' => '@cf/zai-org/glm-5.2', 'family' => 'zhipu'],
+            ['key' => 'deepseek', 'model' => '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 'family' => 'deepseek'],
         ],
     ],
 
