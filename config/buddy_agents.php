@@ -1,5 +1,74 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Council Provider Profiles
+|--------------------------------------------------------------------------
+|
+| A council profile is a WHOLE roster plus the provider it runs on: base URL,
+| the config path of its credential, its provider headers, a chairman and five
+| members. Selecting a profile swaps the entire council; it does not run a
+| second council alongside the first.
+|
+| Base URL and credential are resolved TOGETHER from the selected profile. That
+| pairing is the point: CouncilClient used to read
+| config('ai.providers.openrouter.key') unconditionally, so repointing base_url
+| at another provider would have sent an OpenRouter token to it.
+|
+| The workers_ai roster was chosen by MEASUREMENT, not reputation. Every seat
+| was probed against the real falsification-round schema over Cloudflare's
+| OpenAI-compatible endpoint on 2026-09-07, and three otherwise attractive
+| models were rejected for failing it: @cf/qwen/qwq-32b returned invalid JSON,
+| @cf/meta/llama-3.3-70b returned valid JSON of the wrong shape, and
+| @cf/google/gemma-4-26b failed the schema on both trials. A seat that cannot
+| hold the schema does not merely underperform, it drops out of the
+| falsification round silently, which is the defect fixed on 2026-09-06.
+|
+| The six seats carry SIX DISTINCT FAMILIES with no overlap, against the
+| openrouter roster's three Anthropic seats plus one OpenAI and one Google. ADR
+| 0009 discloses family skew in every verdict, so this is a diversity
+| improvement and not only a cost one.
+|
+*/
+
+$councilProfiles = [
+
+    'openrouter' => [
+        'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
+        'credential' => 'ai.providers.openrouter.key',
+        'headers' => [
+            'HTTP-Referer' => 'https://github.com/ikarolaborda/buddy',
+            'X-Title' => 'Buddy Council',
+        ],
+        'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+        'members' => [
+            ['key' => 'gpt', 'model' => 'openai/gpt-6-astra', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+            ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
+            ['key' => 'opus', 'model' => 'anthropic/claude-opus-4.8', 'family' => 'anthropic'],
+            ['key' => 'sonnet', 'model' => 'anthropic/claude-sonnet-5', 'family' => 'anthropic'],
+            ['key' => 'gemini', 'model' => 'google/gemini-3.1-pro-preview', 'family' => 'google'],
+        ],
+    ],
+
+    'workers_ai' => [
+        'base_url' => 'https://api.cloudflare.com/client/v4/accounts/'.env('CLOUDFLARE_ACCOUNT_ID').'/ai/v1',
+        'credential' => 'ai.providers.cloudflare.key',
+        'headers' => ['X-Title' => 'Buddy Council'],
+        'chairman' => ['key' => 'chairman', 'model' => '@cf/nvidia/nemotron-3-120b-a12b', 'family' => 'nvidia'],
+        'members' => [
+            ['key' => 'gpt', 'model' => '@cf/openai/gpt-oss-120b', 'family' => 'openai'],
+            ['key' => 'glm', 'model' => '@cf/zai-org/glm-5.3', 'family' => 'zhipu'],
+            ['key' => 'deepseek', 'model' => '@cf/deepseek-ai/deepseek-v4-pro-0813', 'family' => 'deepseek'],
+            ['key' => 'kimi', 'model' => '@cf/moonshotai/kimi-k2.7-code', 'family' => 'moonshot'],
+            ['key' => 'mistral', 'model' => '@cf/mistralai/mistral-small-3.1-24b-instruct', 'family' => 'mistral'],
+        ],
+    ],
+
+];
+
+$councilProfile = (string) env('BUDDY_COUNCIL_PROFILE', 'openrouter');
+$activeCouncil = $councilProfiles[$councilProfile] ?? $councilProfiles['openrouter'];
+
 return [
 
     /*
@@ -104,7 +173,11 @@ return [
 
     'council' => [
         'enabled' => (bool) env('BUDDY_COUNCIL', true),
-        'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
+        'profile' => $councilProfile,
+        'profiles' => array_keys($councilProfiles),
+        'base_url' => $activeCouncil['base_url'],
+        'credential' => $activeCouncil['credential'],
+        'headers' => $activeCouncil['headers'],
         'max_per_day' => (int) env('BUDDY_COUNCIL_MAX_PER_DAY', 10),
         'gate_enabled' => (bool) env('BUDDY_COUNCIL_GATE', true),
         'gate_attempt_threshold' => (int) env('BUDDY_COUNCIL_GATE_ATTEMPTS', 2),
@@ -114,14 +187,8 @@ return [
         'packet_chars' => (int) env('BUDDY_COUNCIL_PACKET_CHARS', 160000),
         'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 24000),
         'min_positions' => 3,
-        'chairman' => ['key' => 'chairman', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
-        'members' => [
-            ['key' => 'gpt', 'model' => 'openai/gpt-6-astra', 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
-            ['key' => 'fable', 'model' => 'anthropic/claude-fable-5', 'family' => 'anthropic'],
-            ['key' => 'opus', 'model' => 'anthropic/claude-opus-4.8', 'family' => 'anthropic'],
-            ['key' => 'sonnet', 'model' => 'anthropic/claude-sonnet-5', 'family' => 'anthropic'],
-            ['key' => 'gemini', 'model' => 'google/gemini-3.1-pro-preview', 'family' => 'google'],
-        ],
+        'chairman' => $activeCouncil['chairman'],
+        'members' => $activeCouncil['members'],
     ],
 
     /*

@@ -197,14 +197,22 @@ class CouncilClient
         return $this->configure(Http::baseUrl($this->baseUrl()));
     }
 
+    /*
+     * Credential and headers come from the ACTIVE council profile, not from a
+     * hard-coded provider. This used to read ai.providers.openrouter.key
+     * unconditionally, which meant repointing base_url at another provider
+     * would have sent an OpenRouter token to it. Base URL and credential are
+     * now resolved from the same profile so they cannot drift apart.
+     */
     protected function configure(PendingRequest $request): PendingRequest
     {
+        $credential = (string) config('buddy_agents.council.credential', 'ai.providers.openrouter.key');
+
         return $request
-            ->withHeaders([
-                'Authorization' => 'Bearer '.(string) config('ai.providers.openrouter.key'),
-                'HTTP-Referer' => 'https://github.com/ikarolaborda/buddy',
-                'X-Title' => 'Buddy Council',
-            ])
+            ->withHeaders(array_merge(
+                (array) config('buddy_agents.council.headers', []),
+                ['Authorization' => 'Bearer '.(string) config($credential)],
+            ))
             ->timeout((int) config('buddy_agents.council.call_timeout', 300))
             ->connectTimeout(10)
             ->retry(1, 2000, fn ($e, $req) => $e instanceof ConnectionException, false)

@@ -55,6 +55,20 @@ return [
             'key' => env('ANTHROPIC_API_KEY'),
         ],
 
+        /*
+         * Cloudflare Workers AI. Reached over its OpenAI-compatible surface at
+         * /accounts/{account}/ai/v1, so the council speaks to it with the same
+         * chat-completions protocol it uses for OpenRouter. Kept as its own
+         * provider rather than folded into the OpenRouter entry, because the
+         * council resolves base URL and credential together from one profile
+         * and must never read a Cloudflare token out of an OpenRouter setting.
+         */
+        'cloudflare' => [
+            'driver' => 'cloudflare',
+            'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+            'key' => env('CLOUDFLARE_API_TOKEN'),
+        ],
+
         'azure' => [
             'driver' => 'azure',
             'key' => env('AZURE_OPENAI_API_KEY'),
