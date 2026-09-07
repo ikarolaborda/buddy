@@ -26,6 +26,13 @@ set -euo pipefail
 # rather than at the argument check. Buddy now runs in the credited
 # subscription and this is the registry its container app pulls from.
 REGISTRY="${BUDDY_ACR:-acrbuddycreditoerh7kdnhtzo6}"
+
+# Both subscriptions are named "Azure subscription 1", so the GUID is the only
+# thing that distinguishes them, and the CLI default is not stable: on
+# 2026-09-07 it had drifted to an unrelated tenant account and `az acr build`
+# failed with SubscriptionNotFound. Every deploy command already passes this
+# explicitly; the build must too, or it silently builds nothing.
+SUBSCRIPTION="${BUDDY_SUBSCRIPTION:-e7e7a0f4-2689-47ed-b7e0-ce68d8394cc4}"
 REF="${1:-}"
 TARGET="${2:-both}"
 
@@ -68,7 +75,7 @@ build() {
     [ -f "$WORKTREE/$dockerfile" ] || die "$dockerfile does not exist at $SHA"
 
     echo "building $tag from $dockerfile"
-    ( cd "$WORKTREE" && az acr build --registry "$REGISTRY" --image "$tag" -f "$dockerfile" . )
+    ( cd "$WORKTREE" && az acr build --registry "$REGISTRY" --subscription "$SUBSCRIPTION" --image "$tag" -f "$dockerfile" . )
 }
 
 if [ "$TARGET" = "api" ] || [ "$TARGET" = "both" ]; then
