@@ -4,6 +4,7 @@ namespace App\Mcp;
 
 use App\DTOs\ProblemPacket;
 use App\Enums\ApiScope;
+use App\Enums\ArtifactType;
 use App\Enums\ProblemType;
 use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
@@ -390,11 +391,23 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task is in a terminal state.');
         }
 
+        /*
+         * Without the enum rule an out-of-range type reached the model cast and
+         * surfaced as an opaque ValueError with only an error reference, which
+         * told the caller nothing about what it should have sent. The HTTP
+         * AttachArtifactRequest has always validated this way; the MCP surface
+         * was the one that drifted. The message names the values because
+         * Rule::enum on its own only reports an invalid selection.
+         */
+        $allowed = array_map(static fn (ArtifactType $t): string => $t->value, ArtifactType::cases());
+
         $validated = Validator::validate($args, [
             'task_id' => ['required', 'string'],
-            'type' => ['required', 'string'],
+            'type' => ['required', 'string', Rule::enum(ArtifactType::class)],
             'content' => ['required', 'string'],
             'metadata' => ['sometimes', 'array'],
+        ], [
+            'type.enum' => 'The type must be one of: '.implode(', ', $allowed).'.',
         ]);
 
         $artifact = $task->artifacts()->create([

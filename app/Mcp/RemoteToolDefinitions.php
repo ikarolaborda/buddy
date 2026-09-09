@@ -2,6 +2,8 @@
 
 namespace App\Mcp;
 
+use App\Enums\ArtifactType;
+
 class RemoteToolDefinitions
 {
     /**
@@ -96,7 +98,10 @@ class RemoteToolDefinitions
                     'type' => 'object',
                     'properties' => [
                         'task_id' => $taskId,
-                        'type' => ['type' => 'string'],
+                        'type' => [
+                            'type' => 'string',
+                            'enum' => array_map(static fn (ArtifactType $t): string => $t->value, ArtifactType::cases()),
+                        ],
                         'content' => ['type' => 'string'],
                         'metadata' => ['type' => 'object'],
                     ],
