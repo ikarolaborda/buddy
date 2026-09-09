@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Enums\ArtifactType;
+use App\Enums\TaskStatus;
 use App\Mcp\RemoteToolDefinitions;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -26,6 +27,18 @@ class AttachArtifactTypeContractTest extends TestCase
         $expected = array_map(static fn (ArtifactType $t): string => $t->value, ArtifactType::cases());
 
         $this->assertSame($expected, $tool['inputSchema']['properties']['type']['enum'] ?? null);
+    }
+
+    /*
+     * The close guard exists because Evaluating reaches Closed only through
+     * Completed or Failed. If that ever became a legal transition the guard
+     * would start refusing a close the state machine would have accepted.
+     */
+    public function test_an_evaluating_task_cannot_transition_straight_to_closed(): void
+    {
+        $this->assertFalse(TaskStatus::Evaluating->canTransitionTo(TaskStatus::Closed));
+        $this->assertTrue(TaskStatus::Evaluating->canTransitionTo(TaskStatus::Completed));
+        $this->assertTrue(TaskStatus::Completed->canTransitionTo(TaskStatus::Closed));
     }
 
     /*

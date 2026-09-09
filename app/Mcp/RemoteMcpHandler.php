@@ -493,6 +493,20 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task is already in a terminal state.');
         }
 
+        /*
+         * Evaluating reaches Closed only through Completed or Failed, so the
+         * state machine rejects this and the RuntimeException surfaced as an
+         * opaque error reference. The close protocol asks every caller to close
+         * what it opens, so the refusal has to say how to satisfy it.
+         */
+        if ($task->status === TaskStatus::Evaluating) {
+            return $this->toolError(
+                $id,
+                'Task is still evaluating and cannot be closed yet.'
+                .' Poll buddy.get_task_status until it reports completed or failed, then close it.'
+            );
+        }
+
         // inputSchema enums are advisory; unknown outcomes degrade to null
         // rather than failing the close.
         $outcome = TaskOutcome::tryFrom((string) ($args['outcome'] ?? ''));
