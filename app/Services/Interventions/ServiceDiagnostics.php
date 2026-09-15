@@ -25,10 +25,13 @@ class ServiceDiagnostics
         }
 
         $timeouts = config('buddy.timeouts');
+        $queueRetryAfter = config('queue.connections.'.config('queue.default').'.retry_after');
         $checks['timeout_configuration'] = $timeouts['provider'] < $timeouts['job']
             && $timeouts['job'] < $timeouts['worker']
             && $timeouts['council_job'] < $timeouts['worker']
-            && $timeouts['worker'] < $timeouts['retry_after'];
+            && $timeouts['worker'] < $timeouts['retry_after']
+            && is_numeric($queueRetryAfter)
+            && $timeouts['worker'] < (int) $queueRetryAfter;
 
         $providers = [];
         foreach (config('buddy_agents.council.profiles') as $name) {

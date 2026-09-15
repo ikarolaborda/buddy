@@ -35,6 +35,9 @@ it is not a deliberation quality benchmark.
 The council timeout is 1,800 seconds. Start the worker with `--timeout=1860`
 and keep queue `retry_after` at 2,400 seconds. A `queue:listen` process also needs
 this timeout; its parent can kill a council before the job's own timeout.
+Redis and database queues default to `BUDDY_QUEUE_RETRY_AFTER`; their optional
+`REDIS_QUEUE_RETRY_AFTER` and `DB_QUEUE_RETRY_AFTER` overrides must also exceed
+the worker timeout. Health diagnostics inspect the selected queue's value.
 
 ## Interventions
 
