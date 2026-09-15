@@ -110,8 +110,14 @@ the live pilot costs nothing extra as long as the Worker budget counters hold.
 ## Credentials observed
 
 - `buddy/.env` `CLOUDFLARE_API_TOKEN` and the Key Vault `buddy-cloudflare-workers-ai`
-  token both answer `Invalid API Token` from this workstation; the Key Vault one
-  is expected to work only from Azure's egress IP. Wrangler holds an OAuth login
-  for the account, which provisioned the edge resources.
+  token are both **account-owned** tokens and both verify as `active` through
+  `GET /accounts/{account_id}/tokens/verify`. They answer `Invalid API Token`
+  on the user-scoped `/user/tokens/verify` endpoint, which is the wrong endpoint
+  for account tokens, not a sign of a dead token. The `.env` token lists the
+  account's queues and subscriptions (`Workers Paid` USD 5 monthly, `R2 Paid`
+  USD 0 monthly, both predating this work). The edge resources were provisioned
+  with wrangler's OAuth login.
 - No Cloudflare API token is stored on Azure for the edge: Azure reaches
   Cloudflare only through the Worker with the shared service key.
+- The startup credit balance is not exposed by the API endpoints this token can
+  reach; read it in the dashboard billing page before relying on a figure.
