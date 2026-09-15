@@ -234,6 +234,42 @@ Preview resources exist alongside production (table above); `buddy-edge-preview`
 
 G0 passed. G1 passed: key fix and metrics-api signal live; the synthetic 30-job backlog scaled the worker from one to three replicas within about 90 seconds, drained at about two jobs per minute, scaled back to one replica, and every job ran exactly once (runbook and evidence manifest). G2, G3, G5 (fakes and PostgreSQL suites), G6 (fake object store) pass locally. G4 depends on the Worker tests. G7 stays open: Browser Run coverage under the startup grant remains unconfirmed and `BUDDY_EDGE_BROWSER_DIAGNOSTICS` stays false. G8: rollout, budgets and rollback are documented in [cloudflare-edge-rollout.md](../recipes/cloudflare-edge-rollout.md); the production rollout itself has not been performed. Do not describe the six capabilities as complete while G1, G7 and the production rollout remain open.
 
+## Queue harness (2026-09-15, third session) — LIVE
+
+Agents reported Buddy "takes too long when several of us call it". Measured
+over 14 days: two runs never overlapped (one `queue:work` process per replica,
+councils and evaluations on one list, scaler threshold 10). Shipped and
+deployed as [ADR 0014](../adr/0014-queue-lanes-and-in-replica-concurrency.md)
+with the release and rollback procedure in
+[queue-lanes-release.md](../recipes/queue-lanes-release.md): Redis stays the
+transport (Kafka/RabbitMQ rejected on evidence), queue lanes
+`evaluations` / `council` / `fast` / `legacy`, Laravel Horizon with one
+fixed-size supervisor per lane (6 / 1 / 2 / 1 per replica), per-lane scaling
+signal with two KEDA rules, worker at 1 vCPU / 2 GiB with a 600 s grace
+period, and `php artisan buddy:queue:report` for the wait / runtime /
+concurrency evidence. Verified in production: 14 synthetic jobs ran 14-wide
+across three replicas; three real evaluations submitted together were
+claimed in the same second and ran concurrently.
+
+Final review (Buddy 01M2K4KNK1EMNJS8YWW23YQJRT, accepted, medium): the
+evidence supports "Buddy no longer serializes multiple callers at the queue",
+not a production p95 guarantee or a saturation limit. Its day-two checks:
+run a six-call simultaneous burst of real evaluations through MCP with a
+declared credit budget and record client-perceived time, wait, runtime,
+outcomes and throttling; rehearse SIGTERM, grace expiry and forced kill for
+evaluation and council jobs in an owned environment before touching the
+grace period or timeouts; keep the expand/migrate/contract order for any
+scale-rule contract change; add lane-level monitoring (oldest ready-job age,
+counts, failed/retried jobs, scaler errors, replicas, provider throttling).
+
+Founder-facing follow-ups: (1) the evaluator's reasoning effort is still
+unsent (measured 5× latency lever) and should go through a quality-gated CIL
+replay before promotion (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) add a
+deployment-wide provider funnel if Azure OpenAI 429s appear (pressure above
+about 16 concurrent evaluations on `gpt-6-astra`); (3) a forced kill of an
+in-flight council during scale-in has not been rehearsed; (4) rollback keeps
+the all-lane worker and reverts routing through `BUDDY_QUEUE_*=default`.
+
 ## Resume and finish procedure
 
 1. Read local instructions and the current repository status.

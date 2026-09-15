@@ -44,7 +44,41 @@ release routes work onto them.
   recovers the task through its lease.
 - Never scale the worker to zero; the credit milestone requires one replica.
 
+## Contract changes: expand, migrate, contract
+
+The worker's KEDA rules poll the API, so a release that changes both the
+rule's `valueLocation` and the worker opens a window in which the new rules
+read the old response. On 2026-09-15 that window lasted 75 seconds (six
+`KEDAScalerFailed` "valueLocation must point to value of type number" events,
+no scale action, minReplicas 1 kept the baseline). Next time, expand the
+endpoint first (serve both shapes), then deploy workers that consume every
+lane, then switch routing, and remove the old shape only after the rollback
+period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
+
 ## Release record
 
-Appended per release with image tag, revisions, verification output and the
-`buddy:queue:report` before/after figures.
+### 2026-09-15 — commits e049394 + 1ac8dad, images `buddy:1ac8dad` / `buddy:1ac8dad-octane`
+
+- Worker revision `ca-buddy-worker-credit--lanes-1ac8dad` (18:06:40 UTC
+  "Horizon started successfully"; command `php artisan horizon`, 1 vCPU /
+  2 GiB, grace 600 s, rules `lane-evaluations` and `lane-council`). API
+  revision `ca-buddy-api-credit--lanes-1ac8dad` healthy 18:07:05. Four jobs on
+  `buddy:1ac8dad`. `GET /horizon` answers 403 (the 404 seen in the first
+  seconds after the switch came from the previous revision).
+- Image experiment before release: Horizon boots in the production image;
+  8 jobs → reserved 6 / pending 2 within 4 s; about 500 MiB under load;
+  SIGTERM with six running deadline-loop jobs → exit 0 after 18 s, all six
+  processed, the two waiting jobs untouched.
+- Synthetic burst, 14 × 90 s on `evaluations` at 18:09:30: 18:10:01 reserved 6,
+  pending 8, replicas 3 (the scaler acted within 30 s, ceil(14 / 6) = 3);
+  18:10:23 reserved 14, pending 0; drained by 18:11:44 (2 min 10 s wall clock
+  against 21 min serial). Worker working set 150 MiB before, 570–579 MiB
+  after, with the pools loaded.
+- Three real evaluations through the production MCP endpoint, queued
+  18:13:06 / 18:13:17 / 18:13:29: each claimed in the same second (0 s queue
+  wait), overlapping intervals (max concurrent 3), runtimes 28 / 54 / 42 s,
+  all completed. `buddy:queue:report --since=3h`: 15 evaluation runs, none
+  failed, runtime p50 42 s / p95 74 s, max concurrent 3.
+- Baseline the change was measured against (14 days before): max concurrent
+  runs 1, queue wait p50 2 s / p90 35 s / p95 193 s / max 2,655 s, 11% of runs
+  waited over 30 s.

@@ -87,6 +87,12 @@ The request named Redis, Kafka and RabbitMQ as candidate "harnesses".
   three lane variables at `default` on the API and jobs; reverting the worker
   alone would strand jobs already serialized onto the new lanes. See
   `docs/recipes/queue-lanes-release.md`.
+- Deployed 2026-09-15 (`docs/recipes/queue-lanes-release.md`, release
+  record): a 14-job synthetic burst ran 14-wide across three replicas within
+  a minute, and three real evaluations submitted together were each claimed
+  in the same second and ran concurrently. The 75-second scaler failure
+  window caused by deploying the worker before the API taught the
+  expand/migrate/contract rule recorded in the recipe.
 - The evaluator's reasoning effort is untouched. It was measured on
   2026-09-06 as a 5.2× latency lever at lower reasoning depth and remains a
   product decision, not a queue decision.
