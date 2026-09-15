@@ -145,6 +145,70 @@ class OutboxTopicRegistryTest extends TestCase
         $this->assertNotNull($delivery->fresh()->delivered_at);
     }
 
+    public function test_task_events_publish_through_the_worker_when_no_queues_token_is_configured(): void
+    {
+        Bus::fake([DeliverOutboxRemoteJob::class]);
+        config([
+            'buddy.edge.events' => true,
+            'buddy.edge.worker_url' => 'https://edge.example/',
+            'buddy.edge.service_key' => 'svc',
+            'buddy.edge.cloudflare.queues_token' => null,
+            'buddy.edge.cloudflare.account_id' => null,
+            'buddy.edge.cloudflare.events_queue_id' => null,
+        ]);
+        $task = BuddyTask::factory()->create(['api_client_id' => null]);
+
+        app(TaskProgressService::class)->phase($task, 'queued');
+
+        $message = OutboxMessage::where('topic', OutboxTopicRegistry::TOPIC_TASK_EVENT)->sole();
+        Http::assertNothingSent();
+
+        Http::fake(['https://edge.example/internal/events' => Http::sequence()
+            ->push(['error' => 'queue_unavailable'], 500)
+            ->push(['accepted' => true], 202)]);
+        $this->assertFalse(app(OutboxPublisher::class)->publish($message));
+        $delivery = $message->deliveries()->where('destination', OutboxTopicRegistry::DESTINATION_CLOUDFLARE_EVENTS)->sole();
+        $this->assertSame(1, $delivery->attempts);
+        $this->assertNotNull($delivery->next_attempt_at);
+        $this->assertNull($delivery->delivered_at);
+        $this->assertStringContainsString('Worker event ingestion failed with HTTP 500', (string) $delivery->last_error);
+        $this->assertNull($message->fresh()->processed_at);
+
+        $delivery->forceFill(['next_attempt_at' => now()->subSecond()])->save();
+        $this->assertTrue(app(OutboxPublisher::class)->publish($message->fresh()));
+        Http::assertSent(fn ($request) => $request->url() === 'https://edge.example/internal/events'
+            && $request->hasHeader('X-Buddy-Edge-Key', 'svc')
+            && ! $request->hasHeader('Authorization')
+            && $request['task_id'] === $task->ulid
+            && $request['task_sequence'] === 1
+            && $request['type'] === 'buddy.task.progress.v1');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'api.cloudflare.com'));
+        $this->assertNotNull($message->fresh()->processed_at);
+        $this->assertNotNull($delivery->fresh()->delivered_at);
+    }
+
+    public function test_a_configured_queues_token_keeps_the_direct_queues_path_even_with_a_worker_url(): void
+    {
+        Bus::fake([DeliverOutboxRemoteJob::class]);
+        config([
+            'buddy.edge.events' => true,
+            'buddy.edge.worker_url' => 'https://edge.example',
+            'buddy.edge.service_key' => 'svc',
+            'buddy.edge.cloudflare.account_id' => 'acc',
+            'buddy.edge.cloudflare.events_queue_id' => 'q1',
+            'buddy.edge.cloudflare.queues_token' => 'tok',
+        ]);
+        $task = BuddyTask::factory()->create(['api_client_id' => null]);
+        app(TaskProgressService::class)->phase($task, 'queued');
+        $message = OutboxMessage::where('topic', OutboxTopicRegistry::TOPIC_TASK_EVENT)->sole();
+
+        Http::fake(['https://api.cloudflare.com/client/v4/accounts/acc/queues/q1/messages' => Http::response(['success' => true], 200)]);
+        $this->assertTrue(app(OutboxPublisher::class)->publish($message));
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer tok'));
+    }
+
     public function test_replay_command_refuses_local_and_replays_remote_deliveries(): void
     {
         Bus::fake();

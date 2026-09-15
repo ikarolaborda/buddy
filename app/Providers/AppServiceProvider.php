@@ -9,7 +9,9 @@ use App\Contracts\EcosystemKnowledgeGateway;
 use App\Contracts\MemoryGateway;
 use App\Enums\MemoryBackend;
 use App\Services\Artifacts\R2ObjectStore;
+use App\Services\Artifacts\WorkerProxyObjectStore;
 use App\Services\Diagnostics\HttpWorkerCaptureDispatcher;
+use App\Services\Edge\EdgeTokenSigner;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\Knowledge\AlgoliaEcosystemKnowledgeGateway;
 use App\Services\Knowledge\NullEcosystemKnowledgeGateway;
@@ -41,7 +43,21 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(EvaluatorOptimizerService::class);
         $this->app->singleton(PromptRegistry::class);
         $this->app->singleton(BrowserCaptureDispatcher::class, HttpWorkerCaptureDispatcher::class);
-        $this->app->singleton(ArtifactObjectStore::class, fn () => new R2ObjectStore(Storage::disk('r2')));
+        $this->app->singleton(ArtifactObjectStore::class, function ($app) {
+            $workerUrl = (string) config('buddy.edge.worker_url');
+
+            // Without an R2 key on Azure every object operation goes through
+            // the Worker, which holds the only R2 binding.
+            if ($workerUrl !== '' && (string) config('filesystems.disks.r2.key') === '') {
+                return new WorkerProxyObjectStore(
+                    $workerUrl,
+                    (string) config('buddy.edge.service_key'),
+                    $app->make(EdgeTokenSigner::class),
+                );
+            }
+
+            return new R2ObjectStore(Storage::disk('r2'));
+        });
 
         $this->app->singleton(MemoryGateway::class, function ($app) {
             $backend = MemoryBackend::tryFrom((string) config('buddy.memory.backend'))
