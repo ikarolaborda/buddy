@@ -47,6 +47,25 @@ return [
             'report' => false,
         ],
 
+        /*
+         * Cloudflare R2 through the S3 API (plan §9). Private bucket, path
+         * style, region 'auto'; presigned PUT/GET URLs are the only client
+         * access path and they are short-lived capabilities never logged.
+         * A separate limited token pair is used for this disk; the memory
+         * sync credentials are not reused.
+         */
+        'r2' => [
+            'driver' => 's3',
+            'key' => env('BUDDY_R2_ACCESS_KEY_ID'),
+            'secret' => env('BUDDY_R2_SECRET_ACCESS_KEY'),
+            'region' => 'auto',
+            'bucket' => env('BUDDY_R2_BUCKET', 'buddy-artifacts-preview'),
+            'endpoint' => env('BUDDY_R2_ENDPOINT'),
+            'use_path_style_endpoint' => true,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

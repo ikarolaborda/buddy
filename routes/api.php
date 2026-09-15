@@ -1,10 +1,22 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\ApiClientController;
+use App\Http\Controllers\Api\Buddy\Artifacts\ArtifactSummaryController;
+use App\Http\Controllers\Api\Buddy\Artifacts\CompleteArtifactUploadController;
+use App\Http\Controllers\Api\Buddy\Artifacts\DeleteArtifactController;
+use App\Http\Controllers\Api\Buddy\Artifacts\DownloadArtifactController;
+use App\Http\Controllers\Api\Buddy\Artifacts\ReserveArtifactUploadController;
 use App\Http\Controllers\Api\Buddy\BuddyTaskController;
+use App\Http\Controllers\Api\Buddy\CapabilitiesController;
+use App\Http\Controllers\Api\Buddy\Diagnostics\CreateDiagnosticCaptureController;
+use App\Http\Controllers\Api\Buddy\Diagnostics\ShowDiagnosticCaptureController;
 use App\Http\Controllers\Api\Buddy\ViewTicketController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\Internal\Cloudflare\ArtifactSummaryForSessionController;
+use App\Http\Controllers\Api\Internal\Cloudflare\CompleteDiagnosticCaptureController;
 use App\Http\Controllers\Api\Internal\Cloudflare\DelegatedInterventionController;
+use App\Http\Controllers\Api\Internal\Cloudflare\DelegatedTaskStatusController;
+use App\Http\Controllers\Api\Internal\Cloudflare\DelegationController;
 use App\Http\Controllers\Api\Internal\Cloudflare\SessionExchangeController;
 use App\Http\Controllers\Api\Internal\Cloudflare\TaskSnapshotController;
 use App\Http\Controllers\Api\Internal\ScalingMetricsController;
@@ -29,7 +41,18 @@ Route::prefix('internal/cloudflare')->middleware('edge.service')->group(function
         ->name('internal.cloudflare.tasks.snapshot');
     Route::post('tasks/{task}/interventions', DelegatedInterventionController::class)
         ->name('internal.cloudflare.tasks.interventions');
+    Route::post('tasks/{task}/delegations', DelegationController::class)
+        ->name('internal.cloudflare.tasks.delegations');
+    Route::get('tasks/{task}/status', DelegatedTaskStatusController::class)
+        ->name('internal.cloudflare.tasks.status');
+    Route::get('tasks/{task}/artifacts/{artifact}/summary', ArtifactSummaryForSessionController::class)
+        ->name('internal.cloudflare.tasks.artifacts.summary');
+    Route::post('tasks/{task}/diagnostic-captures/{capture}/complete', CompleteDiagnosticCaptureController::class)
+        ->name('internal.cloudflare.tasks.captures.complete');
 });
+
+Route::get('buddy/capabilities', CapabilitiesController::class)
+    ->name('buddy.capabilities');
 
 Route::post('mcp', [McpController::class, 'post'])
     ->middleware(['mcp.origin', 'auth.buddy'])
@@ -70,4 +93,31 @@ Route::prefix('buddy')->group(function () {
     Route::post('tasks/{task}/view-tickets', ViewTicketController::class)
         ->middleware('auth.buddy:tasks:read')
         ->name('buddy.tasks.view_tickets');
+
+    // P5 private artifacts in R2 (plan §9); every route 404s while
+    // BUDDY_EDGE_ARTIFACTS is false and re-checks task ownership.
+    Route::post('tasks/{task}/artifact-uploads', ReserveArtifactUploadController::class)
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.artifact_uploads.store');
+    Route::post('tasks/{task}/artifact-uploads/{upload}/complete', CompleteArtifactUploadController::class)
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.artifact_uploads.complete');
+    Route::get('tasks/{task}/artifacts/{artifact}/download', DownloadArtifactController::class)
+        ->middleware('auth.buddy:tasks:read')
+        ->name('buddy.tasks.artifacts.download');
+    Route::get('tasks/{task}/artifacts/{artifact}/summary', ArtifactSummaryController::class)
+        ->middleware('auth.buddy:tasks:read')
+        ->name('buddy.tasks.artifacts.summary');
+    Route::delete('tasks/{task}/artifacts/{artifact}', DeleteArtifactController::class)
+        ->middleware('auth.buddy:tasks:write')
+        ->name('buddy.tasks.artifacts.destroy');
+
+    // P7 authorized browser diagnostics (plan §11); requires the new
+    // diagnostics:capture scope and stays inert while the live flag is off.
+    Route::post('tasks/{task}/diagnostic-captures', CreateDiagnosticCaptureController::class)
+        ->middleware('auth.buddy:diagnostics:capture')
+        ->name('buddy.tasks.diagnostic_captures.store');
+    Route::get('tasks/{task}/diagnostic-captures/{capture}', ShowDiagnosticCaptureController::class)
+        ->middleware('auth.buddy:tasks:read')
+        ->name('buddy.tasks.diagnostic_captures.show');
 });

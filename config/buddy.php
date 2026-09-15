@@ -314,6 +314,7 @@ return [
          * cross-tenant authority.
          */
         'service_key' => env('BUDDY_EDGE_SERVICE_KEY'),
+        'worker_url' => env('BUDDY_EDGE_WORKER_URL'),
         'delegation_secret' => env('BUDDY_EDGE_DELEGATION_SECRET'),
         'delegation_ttl' => (int) env('BUDDY_EDGE_DELEGATION_TTL', 172800),
         'allowed_origins' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_EDGE_ALLOWED_ORIGINS', '')))),
