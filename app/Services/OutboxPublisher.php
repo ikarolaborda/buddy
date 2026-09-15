@@ -46,12 +46,12 @@ class OutboxPublisher
     protected function append(string $topic, string $messageKey, array $payload): ?OutboxMessage
     {
         try {
-            $message = OutboxMessage::create([
+            $message = DB::transaction(fn () => OutboxMessage::create([
                 'topic' => $topic,
                 'message_key' => $messageKey,
                 'payload' => $payload,
                 'available_at' => now(),
-            ]);
+            ]));
         } catch (UniqueConstraintViolationException) {
             return null;
         }
@@ -65,27 +65,31 @@ class OutboxPublisher
 
     public function publish(OutboxMessage $message): bool
     {
-        $claimed = OutboxMessage::query()
+        $pending = OutboxMessage::query()
             ->whereKey($message->id)
             ->whereNull('processed_at')
             ->update([
                 'attempts' => DB::raw('attempts + 1'),
-                'processed_at' => now(),
             ]);
 
-        if ($claimed !== 1) {
+        if ($pending !== 1) {
             return false;
         }
 
         try {
             $this->dispatchFor($message);
 
+            OutboxMessage::query()
+                ->whereKey($message->id)
+                ->whereNull('processed_at')
+                ->update(['processed_at' => now(), 'last_error' => null]);
+
             return true;
         } catch (\Throwable $e) {
             OutboxMessage::query()
                 ->whereKey($message->id)
+                ->whereNull('processed_at')
                 ->update([
-                    'processed_at' => null,
                     'last_error' => $e->getMessage(),
                 ]);
 

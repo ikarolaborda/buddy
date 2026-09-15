@@ -15,8 +15,10 @@ use App\Models\ApiClient;
 use App\Models\BuddyTask;
 use App\Models\IdempotencyRecord;
 use App\Services\Council\CouncilGate;
+use App\Services\Council\CouncilProfile;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\IdempotencyService;
+use App\Services\Interventions\InterventionService;
 use App\Services\OutboxPublisher;
 use App\Services\TaskStateService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -25,6 +27,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Attributes\Controllers\Middleware;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 #[Middleware('throttle:buddy-api')]
 class BuddyTaskController extends Controller
@@ -101,6 +105,15 @@ class BuddyTaskController extends Controller
         $task->load('recommendations');
 
         return new BuddyTaskResource($task);
+    }
+
+    public function intervene(Request $request, BuddyTask $task, InterventionService $interventions): JsonResponse
+    {
+        $client = $request->attributes->get('api_client');
+        $key = $request->attributes->get('api_key');
+        abort_unless($client !== null && $key !== null, 401);
+
+        return response()->json($interventions->perform($task, $client, $key, $request->all()));
     }
 
     /*
@@ -217,6 +230,12 @@ class BuddyTaskController extends Controller
             ], 422);
         }
 
+        $validated = $request->validate(['profile' => ['sometimes', 'string', Rule::in(config('buddy_agents.council.profiles'))]]);
+        $profile = CouncilProfile::resolve($validated['profile'] ?? null);
+        if (isset($validated['profile'])) {
+            CouncilProfile::requireConfigured($validated['profile']);
+        }
+
         $gate = app(CouncilGate::class)->evaluate(
             $task,
             $request->input('criticality'),
@@ -236,8 +255,13 @@ class BuddyTaskController extends Controller
 
         // Council is never inline: 12 large-model calls would hold an
         // Octane worker for minutes (ADR 0008/0009).
-        DB::transaction(function () use ($task) {
+        DB::transaction(function () use ($task, $profile) {
+            $task = BuddyTask::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if ($task->operation === 'council' || $task->claimed_by !== null || $task->isTerminal()) {
+                throw ValidationException::withMessages(['task_id' => 'Task already dispatched or running; use a new task.']);
+            }
             $task->operation = 'council';
+            $task->council_profile = $profile['profile'];
             $task->save();
 
             if ($task->status === TaskStatus::Pending) {
@@ -250,6 +274,7 @@ class BuddyTaskController extends Controller
         return response()->json([
             'task_id' => $task->ulid,
             'status' => 'deliberating',
+            'profile' => $profile['profile'],
             'message' => 'Council convened. Poll GET /api/buddy/tasks/{id}; expect 2-10 minutes.',
         ], 202);
     }

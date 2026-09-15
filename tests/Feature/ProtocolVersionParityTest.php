@@ -175,6 +175,6 @@ class ProtocolVersionParityTest extends TestCase
         $second = RemoteToolDefinitions::all();
 
         $this->assertSame($first, $second);
-        $this->assertCount(7, $first);
+        $this->assertCount(8, $first);
     }
 }

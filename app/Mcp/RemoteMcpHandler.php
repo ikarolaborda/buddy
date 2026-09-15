@@ -10,9 +10,12 @@ use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Models\ApiClient;
 use App\Models\ApiKey;
+use App\Models\BuddyIntervention;
 use App\Models\BuddyTask;
 use App\Services\Council\CouncilGate;
+use App\Services\Council\CouncilProfile;
 use App\Services\EvaluatorOptimizerService;
+use App\Services\Interventions\InterventionService;
 use App\Services\OutboxPublisher;
 use App\Services\TaskStateService;
 use Illuminate\Support\Facades\DB;
@@ -197,7 +200,11 @@ class RemoteMcpHandler
         $tool = (string) ($params['name'] ?? '');
         $args = $params['arguments'] ?? [];
 
-        $requiredScope = $tool === 'buddy.get_task_status' ? ApiScope::TasksRead : ApiScope::TasksWrite;
+        $requiredScope = match ($tool) {
+            'buddy.get_task_status' => ApiScope::TasksRead,
+            'buddy.intervene' => ApiScope::InterventionsExecute,
+            default => ApiScope::TasksWrite,
+        };
 
         if (! $key->hasScope($requiredScope)) {
             return $this->toolError($id, "Insufficient scope: {$requiredScope->value} required.");
@@ -209,6 +216,7 @@ class RemoteMcpHandler
                 'buddy.get_task_status' => $this->getTaskStatus($id, $args, $client, $key),
                 'buddy.evaluate_task' => $this->evaluateTask($id, $args, $client, $key),
                 'buddy.council_evaluate' => $this->councilEvaluate($id, $args, $client, $key),
+                'buddy.intervene' => $this->intervene($id, $args, $client, $key),
                 'buddy.refine_prompt' => $this->refinePrompt($id, $args, $client, $key),
                 'buddy.attach_artifact' => $this->attachArtifact($id, $args, $client, $key),
                 'buddy.close_task' => $this->closeTask($id, $args, $client, $key),
@@ -288,6 +296,16 @@ class RemoteMcpHandler
         ]);
     }
 
+    protected function intervene(mixed $id, array $args, ApiClient $client, ApiKey $key): array
+    {
+        $task = $this->ownedTask($args, $client, $key);
+        if ($task === null || $task->api_client_id === null) {
+            return $this->toolError($id, 'Task not found.');
+        }
+
+        return $this->toolResult($id, app(InterventionService::class)->perform($task, $client, $key, $args));
+    }
+
     /**
      * @param  array<string, mixed>  $args
      * @return array<string, mixed>
@@ -306,6 +324,8 @@ class RemoteMcpHandler
             'task_id' => $task->ulid,
             'status' => $task->status->value,
             'runs' => $task->runs()->count(),
+            'council_profile' => $task->council_profile,
+            'interventions' => BuddyIntervention::where('buddy_task_id', $task->id)->latest('id')->limit(3)->get()->map->response()->all(),
             'recommendation' => $recommendation === null ? null : [
                 'accepted' => $recommendation->accepted,
                 'confidence' => $recommendation->confidence->value,
@@ -317,6 +337,7 @@ class RemoteMcpHandler
                 'next_actions' => $recommendation->next_actions,
                 'memory_hits' => $recommendation->memory_hits,
                 'knowledge_hits' => $recommendation->knowledge_hits,
+                'council' => $recommendation->council,
             ],
             'council_eligible' => app(CouncilGate::class)
                 ->evaluate($task, null, null)['allowed'],
@@ -446,6 +467,12 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task is terminal; submit a new task for council deliberation.');
         }
 
+        $validated = Validator::validate($args, ['profile' => ['sometimes', 'string', Rule::in(config('buddy_agents.council.profiles'))]]);
+        $profile = CouncilProfile::resolve($validated['profile'] ?? null);
+        if (isset($validated['profile'])) {
+            CouncilProfile::requireConfigured($validated['profile']);
+        }
+
         $gate = app(CouncilGate::class)->evaluate(
             $task,
             isset($args['criticality']) ? (string) $args['criticality'] : null,
@@ -463,8 +490,13 @@ class RemoteMcpHandler
             'reason' => isset($args['reason']) ? (string) $args['reason'] : null,
         ]);
 
-        DB::transaction(function () use ($task) {
+        DB::transaction(function () use ($task, $profile) {
+            $task = BuddyTask::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+            if ($task->operation === 'council' || $task->claimed_by !== null || $task->isTerminal()) {
+                throw ValidationException::withMessages(['task_id' => 'Task already dispatched or running; use a new task.']);
+            }
             $task->operation = 'council';
+            $task->council_profile = $profile['profile'];
             $task->save();
 
             if ($task->status === TaskStatus::Pending) {
@@ -477,7 +509,8 @@ class RemoteMcpHandler
         return $this->toolResult($id, [
             'task_id' => $task->ulid,
             'status' => 'deliberating',
-            'message' => 'Council convened (5 models, falsification rounds). Expect 2-10 minutes; poll buddy.get_task_status.',
+            'profile' => $profile['profile'],
+            'message' => 'Council convened ('.count($profile['members']).' reviewers, falsification rounds). Poll buddy.get_task_status.',
         ]);
     }
 

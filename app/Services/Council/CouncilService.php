@@ -38,11 +38,21 @@ class CouncilService
         $usage = ['prompt_tokens' => 0, 'completion_tokens' => 0];
         $transcript = ['packet_item_ids' => array_keys($packet['items']), 'rounds' => []];
 
-        $chairman = (array) config('buddy_agents.council.chairman');
-        $members = array_values((array) config('buddy_agents.council.members'));
+        $profile = CouncilProfile::resolve($task->council_profile);
+        $client = $this->client->forProfile($task->council_profile);
+        $chairman = $profile['chairman'];
+        $members = array_values($profile['members']);
+        $roster = [
+            'profile' => $profile['profile'],
+            'chairman' => $chairman,
+            'members' => $members,
+            'distinct_member_models' => count(array_unique(array_column($members, 'model'))),
+            'distinct_member_families' => count(array_unique(array_column($members, 'family'))),
+        ];
+        $transcript['roster'] = $roster;
 
         // R0: chairman frames hypotheses with kill conditions.
-        $frame = $this->client->ask($chairman, $this->framingSystem(), $this->framingPrompt($packet));
+        $frame = $client->ask($chairman, $this->framingSystem(), $this->framingPrompt($packet));
         $this->tally($usage, $frame['usage']);
 
         if ($frame['json'] === null) {
@@ -55,17 +65,17 @@ class CouncilService
         $this->beat($task, $claimOwner);
 
         // R1: independent positions, in parallel, shared packet.
-        $positions = $this->client->askAll(
+        $positions = $client->askAll(
             $members,
             $this->positionSystem(),
-            fn ($m) => $this->positionPrompt($packet, $hypotheses),
+            fn ($m) => $this->positionPrompt($packet, $hypotheses)."\nReview focus: ".($m['review_focus'] ?? 'Independent general review.'),
         );
         $this->tallyAll($usage, $positions);
 
         $present = array_values(array_filter($members, fn ($m) => ($positions[$m['key']]['json'] ?? null) !== null));
         $absent = array_values(array_diff(array_column($members, 'key'), array_column($present, 'key')));
 
-        if (count($present) < (int) config('buddy_agents.council.min_positions', 3)) {
+        if (count($present) < (int) $profile['min_positions']) {
             throw new \RuntimeException('Council quorum failed: only '.count($present).' positions ('.implode(',', $absent).' absent)');
         }
 
@@ -78,10 +88,10 @@ class CouncilService
         // R2: falsification round over anonymized positions. Membership
         // is frozen: R1 absentees do not attack a debate they never
         // joined.
-        $attacks = $this->client->askAll(
+        $attacks = $client->askAll(
             $present,
             $this->falsificationSystem(),
-            fn ($m) => $this->falsificationPrompt($packet, $hypotheses, $anonymous['for'][$m['key']]),
+            fn ($m) => $this->falsificationPrompt($packet, $hypotheses, $anonymous['for'][$m['key']])."\nReview focus: ".($m['review_focus'] ?? 'Independent general review.'),
         );
         $this->tallyAll($usage, $attacks);
         $transcript['rounds']['attacks'] = array_map(fn ($a) => $a['json'] ?? ['error' => $a['error']], $attacks);
@@ -98,10 +108,13 @@ class CouncilService
 
         // Mechanical adjudication inputs: PHP, not a model.
         $tally = $this->adjudicate($packet, $hypotheses, $present, $positions, $attacks);
+        $tally['disclosure']['chairman_is_member'] = in_array($chairman['model'], array_column($present, 'model'), true);
+        $tally['disclosure']['distinct_member_models'] = count(array_unique(array_column($present, 'model')));
+        $tally['disclosure']['shared_model_reviewers'] = count($present) > $tally['disclosure']['distinct_member_models'];
         $transcript['mechanical_tally'] = $tally;
 
         // R3: chairman narrates, constrained to the computed ordering.
-        $verdictReply = $this->client->ask(
+        $verdictReply = $client->ask(
             $chairman,
             $this->verdictSystem(),
             $this->verdictPrompt($packet, $hypotheses, $tally),
@@ -113,6 +126,7 @@ class CouncilService
         }
 
         $verdict = $this->assembleVerdict($verdictReply['json'], $tally, $present, $absent, $silent);
+        $verdict['roster'] = $roster;
         $transcript['rounds']['verdict'] = $verdictReply['json'];
 
         return ['verdict' => $verdict, 'transcript' => $transcript, 'usage' => $usage];

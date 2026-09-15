@@ -105,6 +105,9 @@ The asynchronous evaluation lifecycle, end to end:
 
 ## Tech Stack
 
+The [Azure council and interventions guide](docs/recipes/azure-council-and-interventions.md)
+describes the per-task backup council, dependency diagnostics, and recovery of failed evaluations.
+
 | Component       | Technology                                                   |
 |-----------------|--------------------------------------------------------------|
 | Framework       | Laravel 13.x                                                 |

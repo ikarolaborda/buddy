@@ -15,6 +15,10 @@ return [
 
     'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
 
+    'interventions' => [
+        'enabled' => (bool) env('BUDDY_INTERVENTIONS', true),
+    ],
+
     'embedding_model' => env('BUDDY_EMBEDDING_MODEL', 'text-embedding-3-small'),
 
     'max_evaluation_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),

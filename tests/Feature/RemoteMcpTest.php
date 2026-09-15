@@ -194,7 +194,7 @@ class RemoteMcpTest extends TestCase
         $response = $this->rpc(['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/list']);
 
         $response->assertOk();
-        $this->assertCount(7, $response->json('result.tools'));
+        $this->assertCount(8, $response->json('result.tools'));
     }
 
     public function test_submit_and_status_round_trip_with_client_attribution(): void

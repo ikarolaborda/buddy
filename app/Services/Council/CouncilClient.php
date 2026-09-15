@@ -20,6 +20,21 @@ use Illuminate\Support\Facades\Log;
  */
 class CouncilClient
 {
+    protected ?array $profile = null;
+
+    public function forProfile(?string $name): static
+    {
+        $client = clone $this;
+        $client->profile = CouncilProfile::resolve($name);
+
+        return $client;
+    }
+
+    protected function setting(string $name, mixed $default = null): mixed
+    {
+        return $this->profile[$name] ?? config('buddy_agents.council.'.$name, $default);
+    }
+
     /**
      * @param  array<string, mixed>  $member  config row (model, reasoning_effort?)
      * @return array{json: array<string, mixed>|null, usage: array<string, int>, error: string|null}
@@ -90,7 +105,11 @@ class CouncilClient
             // the condition the 402 asks us to wait for, so one retry here
             // recovers a member that was never actually unaffordable.
             if ($this->settlingWouldHelp($response)) {
-                $response = $this->request()->post('/chat/completions', $this->payload($member, $system, $user));
+                try {
+                    $response = $this->request()->post('/chat/completions', $this->payload($member, $system, $user));
+                } catch (\Throwable $e) {
+                    return ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
+                }
             }
 
             if (! $response->successful()) {
@@ -103,6 +122,11 @@ class CouncilClient
         }
 
         $usage = $this->usage($response->json('usage') ?? []);
+
+        if ($response->json('choices.0.message.refusal') || $response->json('choices.0.finish_reason') === 'content_filter') {
+            return ['json' => null, 'usage' => $usage, 'error' => 'provider_refusal'];
+        }
+
         $content = (string) ($response->json('choices.0.message.content') ?? '');
         $json = $this->extractJson($content);
 
@@ -127,11 +151,14 @@ class CouncilClient
                 $truncated
                     ? $user."\n\nYour previous reply was cut off before the JSON closed. Answer more briefly and return ONLY the complete JSON object."
                     : $user."\n\nYour previous reply was not valid JSON. Reply again with ONLY the JSON object, no prose.",
-                $truncated ? 'low' : null,
+                $truncated && $this->setting('profile') !== 'azure' ? 'low' : null,
             ));
 
             if ($retry->successful()) {
                 $usage = $this->mergeUsage($usage, $this->usage($retry->json('usage') ?? []));
+                if ($retry->json('choices.0.message.refusal') || $retry->json('choices.0.finish_reason') === 'content_filter') {
+                    return ['json' => null, 'usage' => $usage, 'error' => 'provider_refusal'];
+                }
                 $json = $this->extractJson((string) ($retry->json('choices.0.message.content') ?? ''));
 
                 if ($json !== null) {
@@ -165,7 +192,7 @@ class CouncilClient
                 ['role' => 'user', 'content' => $user],
             ],
             'response_format' => ['type' => 'json_object'],
-            'max_tokens' => (int) config('buddy_agents.council.max_output_tokens', 24000),
+            $this->setting('token_parameter', 'max_tokens') => (int) $this->setting('max_output_tokens', 24000),
         ];
 
         $effort = $reasoningEffort ?? ($member['reasoning_effort'] ?? null);
@@ -206,14 +233,16 @@ class CouncilClient
      */
     protected function configure(PendingRequest $request): PendingRequest
     {
-        $credential = (string) config('buddy_agents.council.credential', 'ai.providers.openrouter.key');
+        $credential = (string) $this->setting('credential', 'ai.providers.openrouter.key');
+        $authHeader = (string) $this->setting('auth_header', 'Authorization');
+        $secret = (string) config($credential);
 
         return $request
             ->withHeaders(array_merge(
-                (array) config('buddy_agents.council.headers', []),
-                ['Authorization' => 'Bearer '.(string) config($credential)],
+                (array) $this->setting('headers', []),
+                [$authHeader => $authHeader === 'Authorization' ? 'Bearer '.$secret : $secret],
             ))
-            ->timeout((int) config('buddy_agents.council.call_timeout', 300))
+            ->timeout((int) $this->setting('call_timeout', 420))
             ->connectTimeout(10)
             ->retry(1, 2000, fn ($e, $req) => $e instanceof ConnectionException, false)
             ->asJson();
@@ -221,7 +250,7 @@ class CouncilClient
 
     protected function baseUrl(): string
     {
-        return (string) config('buddy_agents.council.base_url', 'https://openrouter.ai/api/v1');
+        return (string) $this->setting('base_url', 'https://openrouter.ai/api/v1');
     }
 
     /**

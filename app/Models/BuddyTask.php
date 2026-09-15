@@ -23,6 +23,8 @@ class BuddyTask extends Model
         'task_summary',
         'problem_type',
         'operation',
+        'council_profile',
+        'recovery_of_task_id',
         'constraints',
         'evidence',
         'requested_outcome',

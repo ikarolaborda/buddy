@@ -21,6 +21,9 @@ Route::post('admin/clients', [ApiClientController::class, 'store'])
     ->name('admin.clients.store');
 
 Route::prefix('buddy')->group(function () {
+    Route::post('tasks/{task}/interventions', [BuddyTaskController::class, 'intervene'])
+        ->middleware('auth.buddy:interventions:execute')
+        ->name('buddy.tasks.interventions');
     Route::post('tasks', [BuddyTaskController::class, 'store'])
         ->middleware('auth.buddy:tasks:write')
         ->name('buddy.tasks.store');

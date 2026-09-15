@@ -20,6 +20,7 @@ class BuddyRun extends Model
         'prompt_modules',
         'langsmith_run_id',
         'error_class',
+        'error_category',
         'token_usage',
         'cost',
         'started_at',

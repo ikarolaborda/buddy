@@ -110,7 +110,7 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.council_evaluate',
-                'description' => 'Convene the LLM council (5 models, falsification-first deliberation) on a task. Slow (2-10 minutes) and costly, so it is GATED: allowed only after the task has a failed or rejected evaluation (check council_eligible on buddy.get_task_status), or with criticality="critical" plus a substantive reason for subjects that cannot be missed (security, irreversible changes, repeatedly bad implementations). Prefer buddy.evaluate_task first. Supply rich evidence: members may only defeat hypotheses by citing your evidence items. An underdetermined verdict with discriminating checks is a normal, honest outcome.',
+                'description' => 'Convene a council on a task. Optional profile="azure" selects the backup: Astra xhigh chair and three GPT-5.5 reviewers with distinct review focuses (one shared model family). Default uses the configured council. Slow and costly; requires failed or rejected evaluation, or criticality="critical" with a substantive reason. Supply rich evidence. Poll buddy.get_task_status for the verdict.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -120,12 +120,38 @@ class RemoteToolDefinitions
                             'enum' => ['critical'],
                             'description' => 'Declare only when the subject is genuinely critical and has not yet earned escalation through a failed or rejected evaluation.',
                         ],
+                        'profile' => ['type' => 'string', 'enum' => config('buddy_agents.council.profiles'), 'description' => 'Council provider for this task only.'],
                         'reason' => [
                             'type' => 'string',
                             'description' => 'Why this subject is critical or cannot be missed (min 30 chars). Recorded for audit.',
                         ],
                     ],
                     'required' => ['task_id'],
+                ],
+            ],
+            [
+                'name' => 'buddy.intervene',
+                'description' => 'Diagnose Buddy service health or recover a failed evaluation using bounded agent context. Requires interventions:execute. Recovery is limited to recorded transient operational failures, runs once per original task, and returns a linked task to poll. Does not execute arbitrary commands or override policy, approval, or credential restrictions. Reuse request_id with the identical packet to retrieve its audit result.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'task_id' => $taskId,
+                        'request_id' => ['type' => 'string', 'maxLength' => 128],
+                        'action' => ['type' => 'string', 'enum' => ['diagnose_health', 'recover_evaluation']],
+                        'blocker' => ['type' => 'string', 'enum' => ['operational_failure', 'capability_missing', 'policy_denied', 'approval_required', 'credential_restriction']],
+                        'context' => [
+                            'type' => 'object',
+                            'additionalProperties' => false,
+                            'properties' => [
+                                'summary' => ['type' => 'string', 'maxLength' => 4000, 'description' => 'Visible task summary and current state. Never send secrets or private reasoning.'],
+                                'session_id' => ['type' => 'string', 'maxLength' => 255],
+                                'last_error' => ['type' => 'string', 'maxLength' => 2000],
+                                'attempted_actions' => ['type' => 'array', 'maxItems' => 10, 'items' => ['type' => 'string', 'maxLength' => 500]],
+                            ],
+                            'required' => ['summary'],
+                        ],
+                    ],
+                    'required' => ['task_id', 'request_id', 'action', 'blocker', 'context'],
                 ],
             ],
             [

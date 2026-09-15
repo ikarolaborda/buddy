@@ -58,6 +58,10 @@ class EvaluateTaskJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         $this->task->refresh();
 
+        if ($this->task->operation !== 'evaluate') {
+            return;
+        }
+
         if ($this->task->isTerminal()) {
             Log::info('Skipping evaluation for terminal task', [
                 'task_ulid' => $this->task->ulid,

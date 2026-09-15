@@ -24,6 +24,7 @@ class BuddyTaskResource extends JsonResource
             'constraints' => $this->constraints,
             'requested_outcome' => $this->requested_outcome,
             'status' => $this->status->value,
+            'council_profile' => $this->council_profile,
             'knowledge_context_status' => $this->knowledge_context_status,
             'knowledge_context_fetched_at' => $this->knowledge_context_fetched_at?->toISOString(),
             'attempt_count' => $this->attempt_count,

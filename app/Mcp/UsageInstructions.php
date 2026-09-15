@@ -17,6 +17,6 @@ final class UsageInstructions
 
     public static function forInitialize(): string
     {
-        return self::CLOSE_PROTOCOL.' '.self::REMEMBER_ASK;
+        return self::CLOSE_PROTOCOL.' '.self::REMEMBER_ASK.' For operational failures, use buddy.intervene with a bounded visible context summary. diagnose_health checks Buddy dependencies; recover_evaluation can queue one linked recovery for a failed transient evaluation. Pass profile="azure" to council_evaluate to select the Azure backup. Interventions do not override policy, approval, or credential restrictions.';
     }
 }

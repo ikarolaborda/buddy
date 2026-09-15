@@ -68,6 +68,8 @@ $councilProfiles = [
      * reasoning, and the chairman emits the longest payload of the run.
      */
     'openrouter' => [
+        'auth_header' => 'Authorization',
+        'token_parameter' => 'max_tokens',
         'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
         'credential' => 'ai.providers.openrouter.key',
         'headers' => [
@@ -85,6 +87,8 @@ $councilProfiles = [
     ],
 
     'workers_ai' => [
+        'auth_header' => 'Authorization',
+        'token_parameter' => 'max_tokens',
         'base_url' => 'https://api.cloudflare.com/client/v4/accounts/'.env('CLOUDFLARE_ACCOUNT_ID').'/ai/v1',
         'credential' => 'ai.providers.cloudflare.key',
         'headers' => ['X-Title' => 'Buddy Council'],
@@ -98,10 +102,27 @@ $councilProfiles = [
         ],
     ],
 
+    'azure' => [
+        'base_url' => rtrim((string) env('AZURE_OPENAI_URL', ''), '/').'/openai/v1',
+        'credential' => 'ai.providers.azure.key',
+        'auth_header' => 'api-key',
+        'token_parameter' => 'max_completion_tokens',
+        'headers' => [],
+        'chairman' => ['key' => 'chairman', 'model' => env('BUDDY_COUNCIL_AZURE_CHAIRMAN', 'gpt-6-astra'), 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+        'members' => [
+            ['key' => 'correctness', 'model' => env('BUDDY_COUNCIL_AZURE_REVIEWER', 'gpt-5.5'), 'family' => 'openai', 'reasoning_effort' => 'high', 'review_focus' => 'Correctness, invariants, counterexamples, and missing tests.'],
+            ['key' => 'reliability', 'model' => env('BUDDY_COUNCIL_AZURE_REVIEWER', 'gpt-5.5'), 'family' => 'openai', 'reasoning_effort' => 'high', 'review_focus' => 'Reliability, timeouts, concurrency, recovery, and operational evidence.'],
+            ['key' => 'security', 'model' => env('BUDDY_COUNCIL_AZURE_REVIEWER', 'gpt-5.5'), 'family' => 'openai', 'reasoning_effort' => 'high', 'review_focus' => 'Security, authorization, privacy, and trust boundaries.'],
+        ],
+    ],
+
 ];
 
 $councilProfile = (string) env('BUDDY_COUNCIL_PROFILE', 'openrouter');
-$activeCouncil = $councilProfiles[$councilProfile] ?? $councilProfiles['openrouter'];
+if (! isset($councilProfiles[$councilProfile])) {
+    throw new InvalidArgumentException('Unknown BUDDY_COUNCIL_PROFILE: '.$councilProfile);
+}
+$activeCouncil = $councilProfiles[$councilProfile];
 
 return [
 
@@ -209,6 +230,9 @@ return [
         'enabled' => (bool) env('BUDDY_COUNCIL', true),
         'profile' => $councilProfile,
         'profiles' => array_keys($councilProfiles),
+        'rosters' => $councilProfiles,
+        'auth_header' => $activeCouncil['auth_header'],
+        'token_parameter' => $activeCouncil['token_parameter'],
         'base_url' => $activeCouncil['base_url'],
         'credential' => $activeCouncil['credential'],
         'headers' => $activeCouncil['headers'],

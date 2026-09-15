@@ -24,6 +24,7 @@ use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Models\PromptVersion;
 use App\Models\TaskFeedback;
+use App\Services\Council\CouncilProfile;
 use App\Services\Council\CouncilService;
 use App\Services\Observability\LangSmithTracer;
 use App\Support\ErrorClassifier;
@@ -121,6 +122,8 @@ class EvaluatorOptimizerService
     public function council(BuddyTask $task, ?string $claimOwner = null): array
     {
         return $this->executeRun($task, 'council', function (BuddyTask $task, BuddyRun $run, MemorySearchPage $memoryPage) use ($claimOwner) {
+            $profile = CouncilProfile::resolve($task->council_profile);
+            $run->update(['provider' => $profile['profile'], 'model_used' => $profile['chairman']['model']]);
             $result = app(CouncilService::class)->deliberate($task, $memoryPage, $claimOwner);
 
             $task->artifacts()->create([
@@ -260,6 +263,7 @@ class EvaluatorOptimizerService
             $run->update([
                 'status' => RunStatus::Failed,
                 'error_class' => $e::class,
+                'error_category' => ErrorClassifier::classify($e)->value,
                 'completed_at' => now(),
             ]);
 

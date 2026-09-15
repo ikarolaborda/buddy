@@ -59,6 +59,10 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         $this->task->refresh();
 
+        if ($this->task->operation !== 'council') {
+            return;
+        }
+
         if ($this->task->isTerminal()) {
             Log::info('Skipping council for terminal task', ['task_ulid' => $this->task->ulid]);
 

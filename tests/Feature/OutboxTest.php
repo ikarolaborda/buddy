@@ -81,4 +81,40 @@ class OutboxTest extends TestCase
 
         Bus::assertNotDispatched(EvaluateTaskJob::class);
     }
+
+    public function test_dispatch_is_acknowledged_after_enqueue_and_failures_remain_replayable(): void
+    {
+        Bus::fake();
+        foreach ([false, true] as $enqueueBeforeFailure) {
+            $task = BuddyTask::factory()->create();
+            $message = OutboxMessage::create([
+                'topic' => 'buddy.task.submitted',
+                'message_key' => $task->ulid.':evaluate',
+                'payload' => ['task_ulid' => $task->ulid, 'operation' => 'evaluate'],
+                'available_at' => now(),
+            ]);
+            $publisher = new class($enqueueBeforeFailure) extends OutboxPublisher
+            {
+                public bool $unacknowledgedDuringDispatch = false;
+
+                public function __construct(private bool $enqueueBeforeFailure) {}
+
+                protected function dispatchFor(OutboxMessage $message): void
+                {
+                    $this->unacknowledgedDuringDispatch = $message->fresh()->processed_at === null;
+                    if ($this->enqueueBeforeFailure) {
+                        parent::dispatchFor($message);
+                    }
+                    throw new \RuntimeException('Interrupted before acknowledgement.');
+                }
+            };
+            $this->assertFalse($publisher->publish($message));
+            $this->assertTrue($publisher->unacknowledgedDuringDispatch);
+            $this->assertNull($message->fresh()->processed_at);
+            $this->assertTrue(app(OutboxPublisher::class)->publish($message));
+            $this->assertNotNull($message->fresh()->processed_at);
+            $this->assertSame(2, $message->fresh()->attempts);
+        }
+        Bus::assertDispatchedTimes(EvaluateTaskJob::class, 2);
+    }
 }
