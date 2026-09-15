@@ -9,7 +9,7 @@ and [council and interventions guide](docs/recipes/azure-council-and-interventio
 They supersede the historical transport and capability examples below where those examples conflict.
 Local Docker evaluation examples are not the production workflow.
 Buddy now supports bounded service diagnosis and recovery of eligible failed evaluations.
-The Cloudflare capabilities are implemented on branch `ikaro/cloudflare-p0-p8` behind `BUDDY_EDGE_*` flags that all ship false; see the handoff's "Implementation status" section, [ADR 0012](docs/adr/0012-worker-autoscaling-signal.md), [ADR 0013](docs/adr/0013-bounded-browser-diagnostics.md), [cloudflare-edge-rollout.md](docs/recipes/cloudflare-edge-rollout.md) and `cloudflare/buddy-edge/`. Production rollout, the G1 scale-out proof and the G7 Browser Run gate remain open.
+The Cloudflare capabilities are live in production behind `BUDDY_EDGE_*` flags (all on except browser diagnostics, which stays off under the credits-only rule); see the handoff's "Implementation status" and "Go-live" sections, [ADR 0012](docs/adr/0012-worker-autoscaling-signal.md), [ADR 0013](docs/adr/0013-bounded-browser-diagnostics.md), [cloudflare-edge-rollout.md](docs/recipes/cloudflare-edge-rollout.md) and `cloudflare/buddy-edge/`. The worker runs Laravel Horizon with one fixed-size supervisor per queue lane ([ADR 0014](docs/adr/0014-queue-lanes-and-in-replica-concurrency.md), [queue-lanes-release.md](docs/recipes/queue-lanes-release.md)).
 
 This document is intended for LLMs and coding agents that interact with Buddy as a tool. It defines when to escalate, how to submit problems, how to interpret responses, and what to avoid.
 

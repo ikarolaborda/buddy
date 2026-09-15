@@ -21,7 +21,7 @@ Buddy is an evaluator-optimizer sidecar agent for engineering workflows. It is c
 Buddy exposes MCP tools and an authenticated REST API from Azure Container Apps.
 It uses PHP 8.5, Laravel, allowed Azure model deployments, and the governed memory hub.
 The [council and interventions guide](docs/recipes/azure-council-and-interventions.md) describes the current operational behavior.
-The Cloudflare edge work (branch `ikaro/cloudflare-p0-p8`) is documented in
+The Cloudflare edge work (live in production since 2026-09-15) is documented in
 [ADR 0012](docs/adr/0012-worker-autoscaling-signal.md) (worker autoscaling signal),
 [ADR 0013](docs/adr/0013-bounded-browser-diagnostics.md) (bounded browser diagnostics),
 [redis-autoscaling-repair.md](docs/recipes/redis-autoscaling-repair.md),
