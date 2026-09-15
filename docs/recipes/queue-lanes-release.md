@@ -112,6 +112,12 @@ period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
   no scale-out was needed).
 - Forced-kill rehearsal and the structural cap are described in the ADR 0014
   amendment.
+- Sustained-backlog scale-out on the final template (image `ccc6c69`, the
+  final review's missing check): 16 × 90 s synthetic jobs on `evaluations`
+  at 19:08:44 UTC; by 19:09:37 replicas were 3 with reserved 15 and pending
+  1, exactly the 5 × 3 cap with the sixteenth job waiting; never more than
+  15 reserved; drained by 19:12:18; the replicas return to one after the
+  300 s cooldown.
 
 ### 2026-09-15 — commits e049394 + 1ac8dad, images `buddy:1ac8dad` / `buddy:1ac8dad-octane`
 
