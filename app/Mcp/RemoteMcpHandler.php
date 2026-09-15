@@ -522,7 +522,7 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task not found.');
         }
 
-        if ($task->status->isTerminal() && $task->status !== TaskStatus::Completed) {
+        if ($task->status === TaskStatus::Closed) {
             return $this->toolError($id, 'Task is already in a terminal state.');
         }
 

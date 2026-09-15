@@ -315,7 +315,7 @@ class BuddyTaskController extends Controller
     {
         $this->authorizeClientAccess($request, $task);
 
-        if ($task->status->isTerminal() && $task->status !== TaskStatus::Completed) {
+        if ($task->status === TaskStatus::Closed) {
             return response()->json([
                 'error' => 'Cannot close a task that is already in a terminal state.',
             ], 422);
