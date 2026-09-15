@@ -51,10 +51,14 @@ final class AzureBackgroundResponse
             return $this->normalize($response);
         } finally {
             if ($id !== null) {
-                try {
-                    if ($pending) {
+                if ($pending) {
+                    try {
                         $request()->timeout(10)->post('/responses/'.$id.'/cancel');
+                    } catch (\Throwable) {
+                        Log::warning('Azure council response cancellation failed', ['response_id' => $id]);
                     }
+                }
+                try {
                     // Background mode requires storage. Remove the response after retrieval.
                     $deleted = $request()->timeout(10)->delete('/responses/'.$id);
                     if (! $deleted->successful()) {

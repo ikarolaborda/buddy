@@ -19,6 +19,7 @@ use Illuminate\Queue\Attributes\Tries;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -35,9 +36,13 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    // Serialized before dispatch so Laravel's fresh failed() instance has the same owner.
+    public readonly string $executionOwner;
+
     public function __construct(
         protected BuddyTask $task,
     ) {
+        $this->executionOwner = 'council:'.Str::uuid();
         $this->afterCommit();
     }
 
@@ -53,7 +58,7 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         return [
             (new WithoutOverlapping('buddy:council:'.$this->task->ulid))
-                ->expireAfter((int) config('buddy.timeouts.council_lease', 1200))
+                ->expireAfter((int) config('buddy.timeouts.council_lease', 2400))
                 ->shared(),
         ];
     }
@@ -78,6 +83,14 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
             return;
         }
 
+        $owner = $this->executionOwner;
+
+        if (! $state->claim($this->task, $owner, (int) config('buddy.timeouts.council_lease', 2400))) {
+            Log::info('Council task already claimed', ['task_ulid' => $this->task->ulid]);
+
+            return;
+        }
+
         $today = BuddyRun::query()
             ->where('run_type', 'council')
             ->whereDate('created_at', now()->toDateString())
@@ -85,15 +98,9 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
         if ($today >= (int) config('buddy_agents.council.max_per_day', 10)) {
             Log::warning('Council daily cap reached', ['task_ulid' => $this->task->ulid, 'today' => $today]);
-            $this->fail(new \RuntimeException('Council daily cap reached ('.$today.').'));
-
-            return;
-        }
-
-        $owner = gethostname().':'.getmypid().':'.Str::random(6);
-
-        if (! $state->claim($this->task, $owner, (int) config('buddy.timeouts.council_lease', 1200))) {
-            Log::info('Council task already claimed', ['task_ulid' => $this->task->ulid]);
+            $error = new \RuntimeException('Council daily cap reached ('.$today.').');
+            $this->failed($error);
+            $this->fail($error);
 
             return;
         }
@@ -101,7 +108,7 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         try {
             $evaluator->council($this->task, $owner);
         } catch (\Throwable $e) {
-            $state->release($this->task, $owner);
+            $this->failed($e);
 
             Log::error('Council failed', ['task_ulid' => $this->task->ulid, 'error' => $e->getMessage()]);
 
@@ -119,19 +126,26 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     public function failed(?\Throwable $error): void
     {
-        $task = $this->task->fresh();
-        if ($task === null || $task->operation !== 'council' || $task->isTerminal()) {
+        $owner = $this->executionOwner ?? null;
+        if ($owner === null) {
             return;
         }
 
-        $task->runs()->where('run_type', 'council')->where('status', RunStatus::Started->value)->update([
-            'status' => RunStatus::Failed->value,
-            'error_class' => $error ? $error::class : null,
-            'error_category' => $error ? ErrorClassifier::classify($error)->value : 'transient',
-            'completed_at' => now(),
-        ]);
-        if ($task->status === TaskStatus::Evaluating) {
-            app(TaskStateService::class)->transition($task, TaskStatus::Failed);
-        }
+        DB::transaction(function () use ($owner, $error) {
+            $task = BuddyTask::query()->whereKey($this->task->id)->lockForUpdate()->first();
+            if ($task === null || $task->operation !== 'council') {
+                return;
+            }
+
+            $task->runs()->where('run_type', 'council')->where('execution_owner', $owner)->where('status', RunStatus::Started->value)->update([
+                'status' => RunStatus::Failed->value,
+                'error_class' => $error ? $error::class : null,
+                'error_category' => $error ? ErrorClassifier::classify($error)->value : 'transient',
+                'completed_at' => now(),
+            ]);
+            if ($task->claimed_by === $owner && $task->status === TaskStatus::Evaluating) {
+                app(TaskStateService::class)->transition($task, TaskStatus::Failed);
+            }
+        });
     }
 }

@@ -13,6 +13,7 @@ class BuddyRun extends Model
         'buddy_task_id',
         'run_number',
         'run_type',
+        'execution_owner',
         'status',
         'model_used',
         'provider',

@@ -238,6 +238,12 @@ class EvaluatorOptimizerService
             [$domainResult, $evaluation, $refinementPayload, $tokenUsage, $councilPayload] = array_pad($callback($task, $run, $memoryPage), 5, null);
 
             DB::transaction(function () use ($task, $run, $evaluation, $memoryPage, $refinementPayload, $tokenUsage, $councilPayload) {
+                if ($run->execution_owner !== null) {
+                    $current = BuddyTask::query()->whereKey($task->id)->lockForUpdate()->firstOrFail();
+                    if ($current->claimed_by !== $run->execution_owner || $current->status !== TaskStatus::Evaluating) {
+                        throw new \RuntimeException('Council execution no longer owns the task.');
+                    }
+                }
                 $this->storeRecommendation($run, $evaluation, $refinementPayload, $councilPayload);
                 $this->logDecision($task, $run, $evaluation, $memoryPage);
 
@@ -284,7 +290,7 @@ class EvaluatorOptimizerService
              * When the queue finally gives up, EvaluateTaskJob::failed() is what
              * moves the task to Failed.
              */
-            if (ErrorClassifier::classify($e) === ErrorClass::Permanent) {
+            if ($runType !== 'council' && ErrorClassifier::classify($e) === ErrorClass::Permanent) {
                 if (! $task->isTerminal() && $task->status === TaskStatus::Evaluating) {
                     $this->state->transition($task, TaskStatus::Failed);
                 }
@@ -328,10 +334,15 @@ class EvaluatorOptimizerService
 
             $runNumber = $locked->runs()->max('run_number') + 1;
 
+            if ($runType === 'council' && $task->claimed_by !== null && $locked->claimed_by !== $task->claimed_by) {
+                throw new \RuntimeException('Council execution no longer owns the task.');
+            }
+
             return BuddyRun::create([
                 'buddy_task_id' => $task->id,
                 'run_number' => $runNumber,
                 'run_type' => $runType,
+                'execution_owner' => $runType === 'council' ? $task->claimed_by : null,
                 'status' => RunStatus::Started,
                 'started_at' => now(),
             ]);

@@ -406,6 +406,7 @@ class CouncilTest extends TestCase
         $job->handle(app(EvaluatorOptimizerService::class), app(TaskStateService::class));
 
         $this->assertSame(0, BuddyRun::query()->count());
+        $this->assertSame(TaskStatus::Failed, $task->refresh()->status);
     }
 
     public function test_reaper_fails_tasks_with_long_expired_leases(): void
@@ -425,15 +426,71 @@ class CouncilTest extends TestCase
     public function test_exhausted_council_failure_does_not_leave_task_evaluating(): void
     {
         $task = BuddyTask::factory()->create(['operation' => 'council', 'status' => TaskStatus::Evaluating]);
-        $run = $task->runs()->create(['run_number' => 1, 'run_type' => 'council', 'status' => 'started']);
+        $job = new CouncilDeliberateJob($task);
+        $task->forceFill(['claimed_by' => $job->executionOwner])->save();
+        $run = $task->runs()->create(['run_number' => 1, 'run_type' => 'council', 'status' => 'started', 'execution_owner' => $job->executionOwner]);
 
-        (new CouncilDeliberateJob($task))->failed(new \RuntimeException('Connection reset by peer'));
+        unserialize(serialize($job))->failed(new \RuntimeException('Connection reset by peer'));
 
         $this->assertSame(TaskStatus::Failed, $task->refresh()->status);
         $this->assertSame('failed', $run->refresh()->status->value);
         $this->assertSame('transient', $run->error_category);
         $this->assertNotNull($run->completed_at);
         $this->assertNull($task->lease_expires_at);
+    }
+
+    public function test_old_failure_does_not_fail_a_new_owner_or_its_run(): void
+    {
+        $task = BuddyTask::factory()->create(['operation' => 'council', 'status' => TaskStatus::Evaluating]);
+        $oldJob = new CouncilDeliberateJob($task);
+        $newJob = new CouncilDeliberateJob($task);
+        $task->forceFill(['claimed_by' => $newJob->executionOwner])->save();
+        $oldRun = $task->runs()->create(['run_number' => 1, 'run_type' => 'council', 'status' => 'started', 'execution_owner' => $oldJob->executionOwner]);
+        $newRun = $task->runs()->create(['run_number' => 2, 'run_type' => 'council', 'status' => 'started', 'execution_owner' => $newJob->executionOwner]);
+
+        $oldJob->failed(new \RuntimeException('Old worker timed out.'));
+
+        $this->assertSame('failed', $oldRun->refresh()->status->value);
+        $this->assertSame('started', $newRun->refresh()->status->value);
+        $this->assertSame(TaskStatus::Evaluating, $task->refresh()->status);
+        $this->assertSame($newJob->executionOwner, $task->claimed_by);
+    }
+
+    public function test_terminal_task_keeps_outcome_while_own_lingering_run_is_failed(): void
+    {
+        $task = BuddyTask::factory()->create(['operation' => 'council', 'status' => TaskStatus::Closed]);
+        $job = new CouncilDeliberateJob($task);
+        $run = $task->runs()->create(['run_number' => 1, 'run_type' => 'council', 'status' => 'started', 'execution_owner' => $job->executionOwner]);
+
+        $job->failed(new \RuntimeException('Worker timed out.'));
+
+        $this->assertSame('failed', $run->refresh()->status->value);
+        $this->assertSame(TaskStatus::Closed, $task->refresh()->status);
+    }
+
+    public function test_late_verdict_cannot_complete_a_task_claimed_by_another_execution(): void
+    {
+        $task = $this->makeCouncilTask();
+        app(TaskStateService::class)->claim($task, 'old-execution');
+        $this->mock(CouncilService::class)->shouldReceive('deliberate')->once()->andReturnUsing(function () use ($task) {
+            BuddyTask::query()->whereKey($task->id)->update(['claimed_by' => 'new-execution']);
+
+            return ['transcript' => [], 'usage' => [], 'verdict' => [
+                'accepted' => true, 'confidence' => 'low', 'summary' => 'Late result',
+                'recommended_plan' => [], 'defeated' => [], 'proposed_discriminators' => [], 'risks' => [],
+            ]];
+        });
+
+        try {
+            app(EvaluatorOptimizerService::class)->council($task, 'old-execution');
+            $this->fail('A stale council must not publish its verdict.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Council execution no longer owns the task.', $e->getMessage());
+        }
+        $this->assertSame(TaskStatus::Evaluating, $task->refresh()->status);
+        $this->assertSame('new-execution', $task->claimed_by);
+        $this->assertSame(0, BuddyRecommendation::query()->count());
+        $this->assertSame('failed', $task->runs()->first()->status->value);
     }
 
     public function test_failed_council_can_be_closed_with_an_outcome(): void

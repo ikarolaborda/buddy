@@ -93,6 +93,21 @@ class AzureBackgroundCouncilTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_cancellation_failure_still_attempts_delete_and_preserves_timeout(): void
+    {
+        config(['buddy_agents.council.call_timeout' => 0]);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/cancel')) {
+                throw new ConnectionException('Cancel connection interrupted.');
+            }
+
+            return Http::response(['id' => 'resp_test', 'status' => 'queued']);
+        });
+        $result = (new CouncilClient)->forProfile('azure')->ask(CouncilProfile::resolve('azure')['chairman'], 'Return JSON.', 'test');
+        $this->assertStringContainsString('timed out', $result['error']);
+        Http::assertSent(fn ($request) => $request->method() === 'DELETE' && str_ends_with($request->url(), '/resp_test'));
+    }
+
     public function test_ambiguous_creation_failure_is_not_retried(): void
     {
         $attempts = 0;

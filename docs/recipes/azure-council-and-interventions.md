@@ -34,6 +34,9 @@ its response ID, so a dropped polling connection does not restart inference.
 Reviewers start in parallel. Background mode requires `store=true`; the client
 deletes the response after retrieval and attempts cancellation and deletion on
 timeout. Cleanup failures are logged. Astra keeps `xhigh` throughout.
+Deletion is attempted even when cancellation throws. Each queued council carries
+a persisted execution owner; failure callbacks and late verdicts cannot change a
+newer owner's task or runs. Daily-cap failures terminate the claimed task.
 
 Allocate enough Azure quota for parallel reviewers and their output budgets.
 The production GPT-5.5 deployment has 200,000 tokens per minute; its earlier
@@ -114,7 +117,9 @@ provider billing after an ambiguous network failure. Existing API rate limits ap
 this feature does not introduce a tenant-wide concurrency quota.
 
 Cloudflare Fable 5.1 is a third-party AI Gateway model. As verified on September
-15, 2026, the account's AI Gateway prepaid balance was zero, and Cloudflare's
+15, 2026, an earlier account check found a zero AI Gateway prepaid balance, and Cloudflare's
 [startup-credit terms](https://www.cloudflare.com/startups/) excluded AI Gateway.
 It is not enabled by this change. Workers AI's existing profile remains available
-under its own billing conditions.
+under its own billing conditions. Later live checks from both Azure Buddy services
+returned Cloudflare authentication errors; model availability and remaining
+startup credit cannot be inferred from a configured credential alone.

@@ -489,7 +489,9 @@ class CouncilService
     protected function beat(BuddyTask $task, ?string $claimOwner): void
     {
         if ($claimOwner !== null) {
-            $this->state->heartbeat($task, $claimOwner, (int) config('buddy.timeouts.council_lease', 1200));
+            if (! $this->state->heartbeat($task, $claimOwner, (int) config('buddy.timeouts.council_lease', 2400))) {
+                throw new \RuntimeException('Council execution no longer owns the task.');
+            }
         }
     }
 
