@@ -27,8 +27,12 @@ The Cloudflare edge work (branch `ikaro/cloudflare-p0-p8`) is documented in
 [redis-autoscaling-repair.md](docs/recipes/redis-autoscaling-repair.md),
 [cloudflare-edge-rollout.md](docs/recipes/cloudflare-edge-rollout.md) (flags, budgets, rollback),
 [cloudflare-edge-deployment.md](docs/recipes/cloudflare-edge-deployment.md) (Worker package under `cloudflare/buddy-edge/`)
-and the [evidence manifest](docs/releases/2026-09-15-cloudflare-evidence-manifest.md).
-Every `BUDDY_EDGE_*` flag ships false; PostgreSQL stays the only authority for tasks, claims, leases and recovery.
+the [evidence manifest](docs/releases/2026-09-15-cloudflare-evidence-manifest.md)
+and the [AI model credit coverage report](docs/releases/2026-09-15-ai-model-credit-coverage.md).
+The flags ship false in the repository; production runs with events, progress, supervision, auto-recovery,
+artifacts and read cache enabled and browser diagnostics off (handoff, "Go-live"). Azure holds no Cloudflare
+credential: every Azure-to-Cloudflare call goes through the Worker with the shared service key.
+PostgreSQL stays the only authority for tasks, claims, leases and recovery.
 The production architecture is described in docs/plans/2026-07-21-buddy-production-sidecar-architecture.md and docs/adr/.
 
 ## Stack
