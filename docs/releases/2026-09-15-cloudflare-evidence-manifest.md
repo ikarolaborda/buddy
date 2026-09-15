@@ -15,22 +15,49 @@ tokens, signed URLs and raw provider bodies are excluded by construction.
 | New Key Vault secrets | `buddy-edge-service-key`, `buddy-edge-delegation-secret`, `buddy-scaling-metrics-key` (random, unused until the release) |
 | Deleted after evidence capture | probe apps `ca-keda-probe-credit`, `ca-keda-probe2-credit` |
 
-No application image was built or deployed. No live revision was rolled. No
-model probe was run. No Cloudflare resource was created.
+## Release performed on 2026-09-15 (user directive: push to main and deploy)
+
+| Item | Value |
+| --- | --- |
+| Source | `main` at `ed62db4`; image tag `e29d9f0` (ACR run `cg1p`, both targets) |
+| Migrations | `caj-buddy-migrate-credit-38qabuv` Succeeded: `2026_09_16_100000`, `2026_09_16_110000`, `2026_09_16_130000` |
+| API | revision `ca-buddy-api-credit--edge-e29d9f0`, Healthy, 100% traffic, 12 secrets (3 new Key Vault references), 57 env entries, all `BUDDY_EDGE_*=false` |
+| Worker | revision `ca-buddy-worker-credit--edge-e29d9f0`, Healthy, 1 replica, min 1 / max 4, single rule `queue-depth-api` (`metrics-api`), 11 secrets |
+| Jobs | outbox and feedback-health on `e29d9f0`; `caj-buddy-artifacts-credit` created (cron `15 3 * * *`) |
+| Probes after cutover | `/api/health` ok; `/api/ready` ready (db, queue); queue-depth 200 with key, 401 without; capabilities flags all false |
+| Rollback position | previous images `aa2c192` / `aa2c192-octane` remain in ACR; worker pre-change export retained outside the repository |
+
+No model probe was run. No Cloudflare resource was created (declined during the
+session).
+
+## G1 scale-out experiment (2026-09-15, no inference)
+
+| Time (UTC) | Observation |
+| --- | --- |
+| 16:02:59 | `pending 0, reserved 0`; worker revision `edge-e29d9f0`, 1 replica |
+| 16:05:29 | execution `caj-buddy-outbox-credit-0qdidjc` dispatched 30 x 90 s synthetic jobs (batch `syn-28wqxack`); `pending 30` on `laravel-database-queues:default` |
+| 16:06:29 | 3 replicas provisioned (1 Running, 2 starting), `pending 27, reserved 3` |
+| 16:07:02 | 3 Running, `pending 27, reserved 3` |
+| 16:08:09 | 3 Running, `pending 24, reserved 3` (drain about 2 jobs/min) |
+
+Desired replicas follow `ceil(pending / 10)`, so a 30-job backlog yields three
+workers, which satisfies "at least two ready workers" with the configured
+threshold. No scaler failure was logged on the new revision. Drain completion
+and scale-in after the 300 s cooldown are recorded in the follow-up commit.
 
 ## Gate status
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
 | G0 baseline | passed | clean tree at 0be2c79; 290 tests + 3 skipped locally before changes |
-| G1 P0 | key fix and signal design done; scale-out proof pending release | ADR 0012, runbook, Log Analytics counts, in-container measurement, probe results |
+| G1 P0 | key fix and metrics-api signal live on worker `edge-e29d9f0`; scale-out result appended below | ADR 0012, runbook, Log Analytics counts, in-container measurement, probe results, post-release scaler events |
 | G2 contracts | passed locally | OutboxTopicRegistryTest (unknown topics quarantined), EdgeIdentityTest (cross-client isolation, revocation fails closed), RedisQueueScaleRuleTest |
 | G3 transport | passed locally (fakes) | Cloudflare failure leaves deliveries pending with backoff while local dispatch completes; replay command; DLQ handled Worker-side |
 | G4 dashboard | Worker tests | see cloudflare/buddy-edge test results in the handoff |
 | G5 recovery | passed locally; PostgreSQL race suites in CI | EdgeSupervisionTest, PostgresEdgeConcurrencyTest, existing PostgresInterventionTest |
 | G6 artifacts and cache | passed locally (fake object store) | ArtifactStorageTest, ArtifactProcessingTest; origin reduction measurement pending preview |
 | G7 browser | open (external) | Browser Run billing coverage unconfirmed; live flag false; mock tests only |
-| G8 release | partially | this manifest, rollout recipe, rollback lifecycle; production rollout not performed |
+| G8 release | Azure rollout performed with flags off; Cloudflare preview not provisioned | this manifest, rollout recipe, rollback lifecycle, deployed identities above |
 
 ## Tier-2 measurements (P0)
 
@@ -42,5 +69,9 @@ model probe was run. No Cloudflare resource was created.
 
 ## Tests
 
-Recorded in the handoff after each package; the final totals are in the
-pull request description.
+| Suite | Result |
+| --- | --- |
+| PHPUnit (SQLite, local, `ed62db4`) | 412 passed, 6 skipped (PostgreSQL-only), 1953 assertions |
+| PHPUnit PostgreSQL filter (CI run 34989976639 on `17fa5aa`; local throwaway postgres:16 during P4) | success; 79 passed (479 assertions) locally incl. `PostgresEdgeConcurrencyTest` |
+| Worker (`cloudflare/buddy-edge`) | vitest 81 passed (7 files); `tsc --noEmit` 0 errors; `wrangler deploy --dry-run --env preview` ok |
+| Pint | passes on every touched file |

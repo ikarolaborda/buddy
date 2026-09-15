@@ -68,11 +68,22 @@ quoted inside, without `$` variables.
 - Leave the API endpoint in place; it is inert without the header key and
   returns 404 without a configured key.
 
-## Not done in this change
+## Release record (2026-09-15)
 
-- No live revision was rolled: a key-only change would have added nothing while
-  the scaler cannot reach Redis, and the endpoint needs the new image.
-- Both probe apps (`ca-keda-probe-credit`, `ca-keda-probe2-credit`) were
-  deleted on 2026-09-15 after the evidence above was captured; recreate one
-  with `az containerapp create --min-replicas 0 --max-replicas 1` if a new
+- API revision `ca-buddy-api-credit--edge-e29d9f0` serves the endpoint; verified
+  200 with the key and 401 without.
+- Worker revision `ca-buddy-worker-credit--edge-e29d9f0` carries the single
+  `queue-depth-api` rule (`metrics-api`, `targetValue 10`, auth
+  `scaling-metrics-key`); applied through the YAML round trip with a fresh
+  `revisionSuffix` (the first attempt failed only because the export still
+  carried the old suffix).
+- Synthetic backlog dispatched at 16:05:29 UTC through a one-off execution of
+  `caj-buddy-outbox-credit` using a start template file (`az containerapp job
+  start --yaml`), because `--args` cannot carry tokens that begin with `--`.
+  `pending` went 0 to 30 on `laravel-database-queues:default`.
+- Scale-out observed: 16:06:29 three replicas provisioned, 16:07:02 three
+  running with `reserved 3`, `pending 27`. Drain and scale-in are recorded in
+  the evidence manifest.
+- Both probe apps were deleted after the evidence above was captured; recreate
+  one with `az containerapp create --min-replicas 0 --max-replicas 1` if a new
   scaler address needs testing without touching the worker.

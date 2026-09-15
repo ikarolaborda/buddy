@@ -163,6 +163,57 @@ They also include memory workflows, Durable Objects, and the `buddy-memory-sync`
 Create separate Buddy application resources and preserve the existing memory service.
 Do not enable its scheduled Autopilot as part of this work.
 
+## Implementation status (2026-09-15, on `main`)
+
+Application source at the start of implementation: `0be2c79` (docs) on `aa2c1920c57f92a8e93576b46795eaa85cacc03f`.
+Commits on `main`: `37c6bb6` (P0 signal repair + P1-P3 Azure foundation), `211d2af` (R2 disk, route surface, capabilities), `90565fa` (IaC edge wiring, cleanup job, rollout recipe, evidence manifest), `17fa5aa` (P4 delegated supervision + diagnostics observations + PostgreSQL edge suites), `7545506` (secret name limit), `2e460e8` (P7 browser diagnostics), `30846aa` (P5 artifacts), `e29d9f0` (Docker context), `ed62db4` (Worker package). Local, `origin/main` and M5P were fast-forwarded to `ed62db4`.
+
+### Deployed to Azure on 2026-09-15 (image tag `e29d9f0`, all edge flags false)
+
+| Item | Identity |
+| --- | --- |
+| Images | `buddy:e29d9f0` (worker, jobs), `buddy:e29d9f0-octane` (API); ACR run `cg1p` |
+| Migrations | execution `caj-buddy-migrate-credit-38qabuv`, three additive migrations DONE |
+| API revision | `ca-buddy-api-credit--edge-e29d9f0`, Healthy, 100% traffic; secrets +`scaling-metrics-key`, `edge-service-key`, `edge-delegation`; `BUDDY_EDGE_*=false`, `BUDDY_SCALING_METRICS_KEY` set |
+| Worker revision | `ca-buddy-worker-credit--edge-e29d9f0`, Healthy, 1-4 replicas; single scale rule `queue-depth-api` (`metrics-api`); secrets +`scaling-metrics-key` |
+| Jobs | `caj-buddy-outbox-credit`, `caj-buddy-feedback-health-credit` on `e29d9f0`; new `caj-buddy-artifacts-credit` (daily 03:15 UTC, `buddy:artifacts:cleanup`) |
+| Verified | `/api/health` ok, `/api/ready` ready, queue-depth endpoint 200 with key and 401 without, capabilities reports every flag false |
+
+Rollback: redeploy `buddy:aa2c192-octane` / `buddy:aa2c192` with the previous revision definitions (the pre-change worker export lives outside the repository); keep the additive schema. No model probe ran. Cloudflare preview resources were not created (declined during the session); the Worker package is deployable with `wrangler deploy --env preview` once resources exist.
+
+### P0 (repair Redis autoscaling) — diagnosed, IaC fixed, live switch deferred to the release
+
+- Measured inside the worker: prefix `laravel-database-`, queue `default`, db 0. The real key is `laravel-database-queues:default`; the rule watched `buddy:queue:default`.
+- The scaler cannot reach Redis at all: 1,469 `KEDAScalerFailed` events in 14 days on every revision (`connection refused` to 100.100.226.25:6379), while worker replicas connect to the same address. The internal FQDN does not serve 6379 either (probe app: `i/o timeout`). The platform scaler does reach public HTTPS (probe app with a `metrics-api` rule got HTTP 403 from GitHub).
+- Decision [ADR 0012](../adr/0012-worker-autoscaling-signal.md): keep the corrected key (`redisQueueListName`, pinned by `tests/Unit/RedisQueueScaleRuleTest.php`) and move the worker scale signal to `workerScaleRuleType=metrics-api` against `GET /api/internal/scaling/queue-depth` (`X-Buddy-Scaling-Key`, Key Vault `buddy-scaling-metrics-key`, already created).
+- Why no live change yet: a key-only revision changes nothing while the scaler cannot dial Redis, and the endpoint needs the new image. Procedure, evidence and rollback: [redis-autoscaling-repair.md](../recipes/redis-autoscaling-repair.md). G1 scale-out proof (`buddy:queue:synthetic --confirm`) runs at the release.
+
+### P1-P3 (contracts, transport, progress) — implemented on Azure, flags off
+
+- `config('buddy.edge.*')`: seven flags default false plus limits, budgets, quotas, retention. Migration `2026_09_16_100000_create_buddy_edge_foundation_tables` is additive.
+- Outbox: explicit topic registry; unknown topics are quarantined and can never dispatch evaluation; per-destination `outbox_deliveries` with claims and backoff; Cloudflare Queues publication only from `DeliverOutboxRemoteJob` or the relay; `buddy:outbox-replay` (remote only, audited).
+- Identity: single-use view tickets (`POST /api/buddy/tasks/{task}/view-tickets`), atomic ticket exchange to hashed sessions, delegations (`bdg1.` HMAC tokens bound to client, task, generation, scopes, expiry; revocation fails closed), `/api/internal/cloudflare/*` behind `X-Buddy-Edge-Key`, every route 404 while its flag is off.
+- Progress: `buddy_task_events` with a per-task sequence allocated under the task row lock; phases queued, memory, evaluation, council.frame/positions/attacks/verdict (with the real roster), terminal, recovery; `progress` object in REST and MCP status only when `BUDDY_EDGE_PROGRESS=true`.
+- Public `GET /api/buddy/capabilities` exposes schema version, flags and limits only.
+
+### P4-P7 and the Worker package
+
+Implemented in parallel on this branch (see the pull request for the file list and test totals): P5 artifact storage service, uploads, quotas, processing and cleanup (`buddy:artifacts:cleanup`); the `cloudflare/buddy-edge` TypeScript Worker (Durable Object projection with hibernating WebSockets, queue consumers, supervisor Workflow, KV summary cache, budget counters, mock-only browser capture); P4 delegation minting, delegated status reads and diagnostics observations; P7 `diagnostics:capture` scope, target policy, capture records and [ADR 0013](../adr/0013-bounded-browser-diagnostics.md). All live behavior stays behind flags that ship false.
+
+### Infrastructure and secrets
+
+- Bicep: API, worker and jobs carry explicit `BUDDY_EDGE_*=false` env, Key Vault references for the edge service key and delegation secret, optional (`deployEdgeSecrets`) references for the Queues token and R2 keys, and a daily `caj-buddy-artifacts-{env}` cleanup job. `az bicep build` passes.
+- Key Vault `kv-buddy-credit`: `buddy-edge-service-key`, `buddy-edge-delegation-secret`, `buddy-scaling-metrics-key` created with random values on 2026-09-15 (unused until the release). Still to provision by an operator: `buddy-cloudflare-queues` (Queues write token), `buddy-r2-access-key-id`, `buddy-r2-secret-access-key` (R2 token scoped to `buddy-artifacts-*`).
+- The local `CLOUDFLARE_API_TOKEN` in `buddy/.env` is rejected as `Invalid API Token` (code 1000) even from the expected IP 213.13.8.191; treat it as dead and do not rely on it. Wrangler holds a separate OAuth login for `iclaborda@aerolambda.tech` (account `63cc5315181fb5f7fbf59dac3efcf76e`), which is the credential used for any preview provisioning; see the "Cloudflare preview" note below for what was created. Commands are listed in [cloudflare-edge-deployment.md](../recipes/cloudflare-edge-deployment.md).
+
+### Cloudflare preview
+
+Preview resources (`buddy-events-preview`, `buddy-events-dlq-preview`, `buddy-artifacts-preview`, `buddy-artifacts-dlq-preview`, R2 `buddy-artifacts-preview`, KV `BUDDY_READ_CACHE_PREVIEW`, Worker `buddy-edge-preview`) were not created in this session. Wrangler's OAuth session can create them; the exact commands are in [cloudflare-edge-deployment.md](../recipes/cloudflare-edge-deployment.md). Until they exist, every Cloudflare-dependent flag stays false and the Worker package is validated only by its own tests and a dry-run deploy.
+
+### Gates
+
+G0 passed. G1: key fix and metrics-api signal live; the synthetic 30-job backlog scaled the worker from one to three replicas within about 90 seconds (details in the runbook and evidence manifest). G2, G3, G5 (fakes and PostgreSQL suites), G6 (fake object store) pass locally. G4 depends on the Worker tests. G7 stays open: Browser Run coverage under the startup grant remains unconfirmed and `BUDDY_EDGE_BROWSER_DIAGNOSTICS` stays false. G8: rollout, budgets and rollback are documented in [cloudflare-edge-rollout.md](../recipes/cloudflare-edge-rollout.md); the production rollout itself has not been performed. Do not describe the six capabilities as complete while G1, G7 and the production rollout remain open.
+
 ## Resume and finish procedure
 
 1. Read local instructions and the current repository status.

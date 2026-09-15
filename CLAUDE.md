@@ -21,6 +21,14 @@ Buddy is an evaluator-optimizer sidecar agent for engineering workflows. It is c
 Buddy exposes MCP tools and an authenticated REST API from Azure Container Apps.
 It uses PHP 8.5, Laravel, allowed Azure model deployments, and the governed memory hub.
 The [council and interventions guide](docs/recipes/azure-council-and-interventions.md) describes the current operational behavior.
+The Cloudflare edge work (branch `ikaro/cloudflare-p0-p8`) is documented in
+[ADR 0012](docs/adr/0012-worker-autoscaling-signal.md) (worker autoscaling signal),
+[ADR 0013](docs/adr/0013-bounded-browser-diagnostics.md) (bounded browser diagnostics),
+[redis-autoscaling-repair.md](docs/recipes/redis-autoscaling-repair.md),
+[cloudflare-edge-rollout.md](docs/recipes/cloudflare-edge-rollout.md) (flags, budgets, rollback),
+[cloudflare-edge-deployment.md](docs/recipes/cloudflare-edge-deployment.md) (Worker package under `cloudflare/buddy-edge/`)
+and the [evidence manifest](docs/releases/2026-09-15-cloudflare-evidence-manifest.md).
+Every `BUDDY_EDGE_*` flag ships false; PostgreSQL stays the only authority for tasks, claims, leases and recovery.
 The production architecture is described in docs/plans/2026-07-21-buddy-production-sidecar-architecture.md and docs/adr/.
 
 ## Stack
@@ -42,6 +50,9 @@ Do not reset a database or replace an archive without explicit authorization for
 - `php artisan buddy:mcp-server` — Start MCP stdio server
 - `php artisan buddy:client:create <name>` — Create an API client and issue a key
 - `php artisan buddy:outbox-relay --once` — Republish unprocessed outbox messages
+- `php artisan buddy:outbox-replay --dry-run` — List or replay remote (Cloudflare) outbox deliveries; `--list-quarantined` shows rejected unknown topics
+- `php artisan buddy:queue:synthetic --count=30 --seconds=90 --confirm` — Bounded no-inference backlog for the autoscaling proof (P0)
+- `php artisan buddy:artifacts:cleanup --dry-run` — Expire abandoned uploads, release quota, purge past retention (P5)
 - `php artisan buddy:cil-report` — Report-only Controlled Improvement Loop metrics
 - `php artisan buddy:cil-sync-suites` — Sync CIL suites to LangSmith datasets
 - `php artisan buddy:cil-replay <candidate> <suite>` — Replay baseline vs candidate prompts

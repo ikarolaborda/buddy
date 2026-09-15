@@ -9,7 +9,7 @@ and [council and interventions guide](docs/recipes/azure-council-and-interventio
 They supersede the historical transport and capability examples below where those examples conflict.
 Local Docker evaluation examples are not the production workflow.
 Buddy now supports bounded service diagnosis and recovery of eligible failed evaluations.
-The planned Cloudflare capabilities are not yet implemented.
+The Cloudflare capabilities are implemented on branch `ikaro/cloudflare-p0-p8` behind `BUDDY_EDGE_*` flags that all ship false; see the handoff's "Implementation status" section, [ADR 0012](docs/adr/0012-worker-autoscaling-signal.md), [ADR 0013](docs/adr/0013-bounded-browser-diagnostics.md), [cloudflare-edge-rollout.md](docs/recipes/cloudflare-edge-rollout.md) and `cloudflare/buddy-edge/`. Production rollout, the G1 scale-out proof and the G7 Browser Run gate remain open.
 
 This document is intended for LLMs and coding agents that interact with Buddy as a tool. It defines when to escalate, how to submit problems, how to interpret responses, and what to avoid.
 
