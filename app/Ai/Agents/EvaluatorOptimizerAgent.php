@@ -11,12 +11,14 @@ use App\Models\BuddyTask;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
+use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Contracts\HasStructuredOutput;
+use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
 
 #[MaxSteps(10)]
-class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput
+class EvaluatorOptimizerAgent implements Agent, HasProviderOptions, HasStructuredOutput
 {
     use Promptable;
 
@@ -60,6 +62,25 @@ class EvaluatorOptimizerAgent implements Agent, HasStructuredOutput
     public function timeout(): int
     {
         return $this->profile()['timeout'];
+    }
+
+    /**
+     * Reasoning effort reaches the Responses API only when the profile sets
+     * it and the provider is an OpenAI-family lab; anything else keeps the
+     * provider default so an unset value changes nothing.
+     *
+     * @return array<string, mixed>
+     */
+    public function providerOptions(Lab|string $provider): array
+    {
+        $effort = $this->profile()['reasoning_effort'] ?? null;
+        $lab = $provider instanceof Lab ? $provider : Lab::tryFrom($provider);
+
+        if (! in_array($effort, ['low', 'medium', 'high'], true) || ! in_array($lab, [Lab::Azure, Lab::OpenAI], true)) {
+            return [];
+        }
+
+        return ['reasoning' => ['effort' => $effort]];
     }
 
     /**

@@ -285,6 +285,15 @@ return [
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 1.0,
+            /*
+             * Unset means the provider default (measured on 2026-09-06 as
+             * medium on Azure gpt-6-astra: ~150s on the real evaluator prompt
+             * against ~29s at low). 'low' is a 5x latency lever that trades
+             * reasoning depth for speed, so it is a product decision gated by
+             * a CIL replay of recommendation quality, never a queue setting.
+             * Accepted values: low, medium, high. Azure rejects 'minimal'.
+             */
+            'reasoning_effort' => env('BUDDY_EVALUATOR_REASONING_EFFORT'),
         ],
         'prompt-refiner' => [
             'provider' => env('BUDDY_REFINER_PROVIDER', 'azure'),
