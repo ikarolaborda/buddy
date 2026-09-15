@@ -84,3 +84,16 @@ Gate G1 passes.
 | PHPUnit PostgreSQL filter (CI run 34989976639 on `17fa5aa`; local throwaway postgres:16 during P4) | success; 79 passed (479 assertions) locally incl. `PostgresEdgeConcurrencyTest` |
 | Worker (`cloudflare/buddy-edge`) | vitest 81 passed (7 files); `tsc --noEmit` 0 errors; `wrangler deploy --dry-run --env preview` ok |
 | Pint | passes on every touched file |
+
+## Go-live evidence (2026-09-15, second session)
+
+| Check | Result |
+| --- | --- |
+| Worker package | vitest 114 passed, typecheck clean; `buddy-edge-preview` and `buddy-edge-prod` deployed; 14/14 smoke checks on both (security headers, bad ticket 410 via Azure, unauthenticated internal routes 401, bad tokens 401, key-authenticated budget/422/404 paths) |
+| Azure | image `230c030` (ACR run `cg1r`); API `flags-230c030`, worker `flags-230c030` (metrics-api rule kept), jobs on `230c030`; flags on except browser diagnostics |
+| Real evaluation | task `01M2K0H9ZYC7EZ2S4N87XRDTPG` completed on the new image in about 15 s of model time; events 1..4 in the authorized snapshot |
+| Event transport | first deliveries failed 422 (Azure sends `trace_id: null`); validator relaxed (`1b5afdb`); `buddy:outbox-replay` replayed 13, 0 failed; Worker budget counters events 26, callbacks 1, workflows 1 |
+| Supervision | Workflow instance `sup-01M2K0M082F57RC6KCKVQ4MQHH-1` created by the consumer and completed (delegation callback observed) |
+| Artifacts | artifact 97: reserve 201 with a Worker upload URL, PUT 201 (80 bytes, etag), finalize 200 (sha256 `ace4bb80…`), processing `completed` v1 with `Authorization: Bearer …` and an `api_key` field redacted, download 200 byte-identical with attachment disposition and `no-store`, delete 200, download afterwards 404 |
+| Dashboard (Chrome, end user) | ticket in the fragment exchanged and cleared; status, phase timeline with timestamps, queue wait 1 s, model time 15 s, recent events; reload served from the session cookie; finished-task label fixed to "Closed (task finished)" (`4a2b1f3`) |
+| Not enabled | `BUDDY_EDGE_BROWSER_DIAGNOSTICS` pending the founder's billing decision (Browser Run is outside startup credits; the Workers Paid plan's 10 included browser hours per month cover the pilot quota) |

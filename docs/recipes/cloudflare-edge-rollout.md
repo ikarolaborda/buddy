@@ -7,8 +7,10 @@ repair lives in [redis-autoscaling-repair.md](redis-autoscaling-repair.md).
 
 ## Flags
 
-All seven flags ship `false` on the API, the worker and the jobs. They are
-independent; the order below is the only supported enable order.
+All seven flags ship `false` in the repository. Since 2026-09-15 production runs
+with `EVENTS`, `PROGRESS`, `SUPERVISION`, `AUTO_RECOVERY`, `ARTIFACTS` and
+`READ_CACHE` true and `BROWSER_DIAGNOSTICS` false (see the handoff's go-live
+table). They are independent; the order below is the only supported enable order.
 
 | Flag | Enables | Depends on |
 | --- | --- | --- |
@@ -22,12 +24,13 @@ independent; the order below is the only supported enable order.
 
 Server-side secrets: `BUDDY_EDGE_SERVICE_KEY` (Key Vault `buddy-edge-service-key`,
 shared with the Worker as `EDGE_SERVICE_KEY`), `BUDDY_EDGE_DELEGATION_SECRET`
-(Key Vault `buddy-edge-delegation-secret`), `BUDDY_EDGE_QUEUES_TOKEN` (a Queues
-write-only token, Key Vault `buddy-cloudflare-queues`), `BUDDY_R2_ACCESS_KEY_ID`
-and `BUDDY_R2_SECRET_ACCESS_KEY` (an R2 token scoped to `buddy-artifacts-*`,
-Key Vault `buddy-r2-artifacts`), `BUDDY_SCALING_METRICS_KEY` (Key Vault
-`buddy-scaling-metrics-key`). None of these is the local admin Cloudflare token,
-which never leaves the workstation.
+(Key Vault `buddy-edge-delegation-secret`) and `BUDDY_SCALING_METRICS_KEY` (Key
+Vault `buddy-scaling-metrics-key`). Azure holds no Cloudflare API token and no
+R2 key: events post to the Worker's `/internal/events`, uploads and downloads use
+HMAC tokens signed with the service key, and finalization uses the Worker's
+`/internal/objects` API. `BUDDY_EDGE_QUEUES_TOKEN` and `BUDDY_R2_*` remain
+optional alternatives that switch the publisher and object store back to direct
+Cloudflare APIs when configured.
 
 ## Budgets and quotas
 
