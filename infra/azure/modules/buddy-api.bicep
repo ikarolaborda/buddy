@@ -165,7 +165,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
         {
-          name: 'edge-delegation-secret'
+          name: 'edge-delegation'
           keyVaultUrl: '${keyVaultUri}secrets/buddy-edge-delegation-secret'
           identity: identity.id
         }
@@ -240,7 +240,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'BUDDY_EDGE_READ_CACHE', value: 'false' }
             { name: 'BUDDY_EDGE_BROWSER_DIAGNOSTICS', value: 'false' }
             { name: 'BUDDY_EDGE_SERVICE_KEY', secretRef: 'edge-service-key' }
-            { name: 'BUDDY_EDGE_DELEGATION_SECRET', secretRef: 'edge-delegation-secret' }
+            { name: 'BUDDY_EDGE_DELEGATION_SECRET', secretRef: 'edge-delegation' }
             { name: 'BUDDY_EDGE_WORKER_URL', value: edgeWorkerUrl }
             { name: 'BUDDY_EDGE_ALLOWED_ORIGINS', value: edgeAllowedOrigins }
             { name: 'BUDDY_EDGE_EVENTS_QUEUE_ID', value: edgeEventsQueueId }
