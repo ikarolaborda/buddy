@@ -25,9 +25,16 @@ final class CouncilProfile
     public static function requireConfigured(string $name): array
     {
         $profile = self::resolve($name);
+        $providers = [$name];
+        foreach ([$profile['chairman'], ...$profile['members']] as $member) {
+            $providers[] = $member['provider_profile'] ?? $name;
+        }
 
-        if (! config($profile['credential']) || ! filter_var($profile['base_url'], FILTER_VALIDATE_URL)) {
-            throw ValidationException::withMessages(['profile' => 'Council provider endpoint or credential is not configured.']);
+        foreach (array_unique($providers) as $provider) {
+            $transport = self::resolve($provider);
+            if (! config($transport['credential']) || ! filter_var($transport['base_url'], FILTER_VALIDATE_URL)) {
+                throw ValidationException::withMessages(['profile' => 'Council provider endpoint or credential is not configured: '.$provider.'.']);
+            }
         }
 
         return $profile;

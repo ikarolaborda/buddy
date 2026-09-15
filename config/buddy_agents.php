@@ -5,10 +5,10 @@
 | Council Provider Profiles
 |--------------------------------------------------------------------------
 |
-| A council profile is a WHOLE roster plus the provider it runs on: base URL,
-| the config path of its credential, its provider headers, a chairman and five
-| members. Selecting a profile swaps the entire council; it does not run a
-| second council alongside the first.
+| A council profile selects a roster and its default provider. An explicit
+| member provider_profile routes only that seat through another configured
+| provider, keeping its endpoint and credential together. Selecting a profile
+| does not run a second council alongside the first.
 |
 | Base URL and credential are resolved TOGETHER from the selected profile. That
 | pairing is the point: CouncilClient used to read
@@ -26,6 +26,8 @@
 | llama-4-scout 2.0, glm-5.2 2.0, deepseek-r1-distill-qwen-32b 2.0. Chair
 | nemotron-3-120b scored 1.7 and stays in the chair, so no seat repeats a
 | family and chairman_is_member remains false.
+| BUDDY_COUNCIL_WORKERS_AI_SOL replaces the GLM seat with GPT-5.6-Sol on
+| OpenRouter. It requires separate OpenRouter credit and is disabled by default.
 |
 | The previous roster was replaced because four of its five seats failed this
 | harder probe. glm-5.3 and kimi-k2.7-code returned HTTP 408 on every trial:
@@ -97,7 +99,9 @@ $councilProfiles = [
             ['key' => 'mistral', 'model' => '@cf/mistralai/mistral-small-3.1-24b-instruct', 'family' => 'mistral'],
             ['key' => 'qwen', 'model' => '@cf/qwen/qwen3-30b-a3b-fp8', 'family' => 'qwen'],
             ['key' => 'llama', 'model' => '@cf/meta/llama-4-scout-17b-16e-instruct', 'family' => 'meta'],
-            ['key' => 'glm', 'model' => '@cf/zai-org/glm-5.2', 'family' => 'zhipu'],
+            env('BUDDY_COUNCIL_WORKERS_AI_SOL', false)
+                ? ['key' => 'sol', 'model' => 'openai/gpt-5.6-sol', 'family' => 'openai', 'reasoning_effort' => 'xhigh', 'provider_profile' => 'openrouter']
+                : ['key' => 'glm', 'model' => '@cf/zai-org/glm-5.2', 'family' => 'zhipu'],
             ['key' => 'deepseek', 'model' => '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b', 'family' => 'deepseek'],
         ],
     ],

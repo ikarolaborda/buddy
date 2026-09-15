@@ -45,12 +45,20 @@ class CouncilClient
         $response = null;
 
         try {
-            $response = $this->send($this->payload($member, $system, $user));
+            $client = $this->forMember($member);
+            $response = $client->send($client->payload($member, $system, $user));
         } catch (\Throwable $e) {
             return ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
         }
 
-        return $this->interpret($member, $system, $user, $response);
+        return $client->interpret($member, $system, $user, $response);
+    }
+
+    protected function forMember(array $member): static
+    {
+        return isset($member['provider_profile'])
+            ? $this->forProfile($member['provider_profile'])
+            : $this;
     }
 
     /**
@@ -62,13 +70,19 @@ class CouncilClient
      */
     public function askAll(array $members, string $system, callable $userPromptFor): array
     {
+        $clients = [];
+        foreach ($members as $member) {
+            $clients[$member['key']] = $this->forMember($member);
+        }
+
         $deadline = microtime(true) + (int) $this->setting('call_timeout', 420);
-        $responses = Http::pool(function (Pool $pool) use ($members, $system, $userPromptFor) {
+        $responses = Http::pool(function (Pool $pool) use ($members, $system, $userPromptFor, $clients) {
             foreach ($members as $member) {
-                $this->configure($pool->as($member['key']))
+                $client = $clients[$member['key']];
+                $client->configure($pool->as($member['key']))
                     ->post(
-                        rtrim($this->baseUrl(), '/').$this->endpoint(),
-                        $this->payload($member, $system, $userPromptFor($member)),
+                        rtrim($client->baseUrl(), '/').$client->endpoint(),
+                        $client->payload($member, $system, $userPromptFor($member)),
                     );
             }
         });
@@ -89,7 +103,8 @@ class CouncilClient
             }
 
             try {
-                $results[$member['key']] = $this->interpret($member, $system, $userPromptFor($member), $this->finish($slot, $deadline));
+                $client = $clients[$member['key']];
+                $results[$member['key']] = $client->interpret($member, $system, $userPromptFor($member), $client->finish($slot, $deadline));
             } catch (\Throwable $e) {
                 $results[$member['key']] = ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
             }

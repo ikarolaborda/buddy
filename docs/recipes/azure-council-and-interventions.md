@@ -120,6 +120,37 @@ Cloudflare Fable 5.1 is a third-party AI Gateway model. As verified on September
 15, 2026, an earlier account check found a zero AI Gateway prepaid balance, and Cloudflare's
 [startup-credit terms](https://www.cloudflare.com/startups/) excluded AI Gateway.
 It is not enabled by this change. Workers AI's existing profile remains available
-under its own billing conditions. Later live checks from both Azure Buddy services
-returned Cloudflare authentication errors; model availability and remaining
-startup credit cannot be inferred from a configured credential alone.
+under its own billing conditions. The Azure credential was repaired on September 15
+using an account-scoped Workers AI token; both services verified it successfully.
+The earlier token allowed only the local IP address. The startup grant had
+$9,999.65 remaining and expires on August 11, 2027. Cloudflare authentication
+does not establish model suitability: the subsequent full GLM-5.3 probe timed out.
+
+## Sol in the Workers AI council
+
+Set `BUDDY_COUNCIL_WORKERS_AI_SOL=true` and configure `OPENROUTER_API_KEY`
+through the deployment's secret store to replace the GLM seat with
+`openai/gpt-5.6-sol` at `xhigh`. Restart the API and worker after changing settings.
+Select `profile: "workers_ai"` to use this council; Azure remains the production
+default. The other four reviewers and the chairman continue on Workers AI.
+
+This switch selects Sol before the first request. It never tries GLM-5.3 first
+and does not fall back to GLM when Sol fails. A refusal stays a refusal. The
+whole council is rejected before inference if a required provider is not
+configured. Serial calls, parallel rounds, and JSON repair use each seat's own
+provider endpoint, credential, headers, and payload. The actual model, family,
+reasoning effort, and provider override appear in the verdict roster.
+
+Sol uses the OpenRouter balance, separate from Cloudflare startup credits.
+As verified on September 15, 2026, the Azure subscription's allowed-model list
+contains Astra, GPT-5.5, and the embedding model; Sol is not an allowed Azure
+deployment. Keep the switch false when restricting use to startup credits.
+With the switch false, the measured GLM-5.2 seat remains. GLM-5.3 is excluded
+in both configurations after repeated Cloudflare timeouts, including a 235-second
+HTTP 408 from the Azure worker on September 15.
+
+[OpenAI's Sol model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
+confirms support for `xhigh`, JSON output, and the Chat Completions endpoint.
+Provider catalog availability is not proof that an account has enough balance.
+Run deployment probes only from the Azure Buddy worker. A small probe checks
+connectivity; use a full falsification packet to assess council suitability.

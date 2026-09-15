@@ -38,7 +38,7 @@ class CouncilService
         $usage = ['prompt_tokens' => 0, 'completion_tokens' => 0];
         $transcript = ['packet_item_ids' => array_keys($packet['items']), 'rounds' => []];
 
-        $profile = CouncilProfile::resolve($task->council_profile);
+        $profile = CouncilProfile::requireConfigured($task->council_profile ?? config('buddy_agents.council.profile'));
         $client = $this->client->forProfile($task->council_profile);
         $chairman = $profile['chairman'];
         $members = array_values($profile['members']);

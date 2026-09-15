@@ -31,6 +31,7 @@ class CouncilProbeCommand extends Command
             $this->line(json_encode([
                 'seat' => $member['key'],
                 'model' => $member['model'],
+                'provider_profile' => $member['provider_profile'] ?? $name,
                 'reasoning_effort' => $member['reasoning_effort'] ?? 'provider_default',
                 'ok' => $ok,
                 'usage' => $reply['usage'],

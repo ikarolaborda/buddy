@@ -6,6 +6,7 @@ use App\Contracts\MemoryGateway;
 use App\Services\Council\CouncilProfile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 
 class ServiceDiagnostics
 {
@@ -35,9 +36,14 @@ class ServiceDiagnostics
 
         $providers = [];
         foreach (config('buddy_agents.council.profiles') as $name) {
-            $profile = CouncilProfile::resolve($name);
+            try {
+                CouncilProfile::requireConfigured($name);
+                $configured = true;
+            } catch (ValidationException) {
+                $configured = false;
+            }
             $providers[$name] = [
-                'configured' => (bool) config($profile['credential']) && (bool) filter_var($profile['base_url'], FILTER_VALIDATE_URL),
+                'configured' => $configured,
                 'availability' => 'not_probed',
             ];
         }
