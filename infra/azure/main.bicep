@@ -71,6 +71,15 @@ param workerScaleRuleType string = 'redis'
 @description('Public URL of the Buddy API queue-depth endpoint used by the metrics-api scale rule.')
 param scalingMetricsUrl string = ''
 
+@description('Cloudflare edge wiring: identifiers only. Secrets are Key Vault references enabled by deployEdgeSecrets.')
+param edgeWorkerUrl string = ''
+param edgeAllowedOrigins string = ''
+param edgeEventsQueueId string = ''
+param edgeArtifactsQueueId string = ''
+param edgeArtifactsBucket string = 'buddy-artifacts-preview'
+param edgeR2Endpoint string = ''
+param deployEdgeSecrets bool = false
+
 module network 'modules/network.bicep' = {
   name: 'network'
   params: {
@@ -190,6 +199,13 @@ module buddyApi 'modules/buddy-api.bicep' = if (deployWorkloads) {
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
     azureOpenAiUrl: azureOpenAiUrl
     azureOpenAiDeployment: azureOpenAiDeployment
+    edgeWorkerUrl: edgeWorkerUrl
+    edgeAllowedOrigins: edgeAllowedOrigins
+    edgeEventsQueueId: edgeEventsQueueId
+    edgeArtifactsQueueId: edgeArtifactsQueueId
+    edgeArtifactsBucket: edgeArtifactsBucket
+    edgeR2Endpoint: edgeR2Endpoint
+    deployEdgeSecrets: deployEdgeSecrets
   }
 }
 
@@ -215,6 +231,13 @@ module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployB
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
     azureOpenAiUrl: azureOpenAiUrl
     azureOpenAiDeployment: azureOpenAiDeployment
+    edgeWorkerUrl: edgeWorkerUrl
+    edgeAllowedOrigins: edgeAllowedOrigins
+    edgeEventsQueueId: edgeEventsQueueId
+    edgeArtifactsQueueId: edgeArtifactsQueueId
+    edgeArtifactsBucket: edgeArtifactsBucket
+    edgeR2Endpoint: edgeR2Endpoint
+    deployEdgeSecrets: deployEdgeSecrets
   }
 }
 
@@ -234,6 +257,11 @@ module jobs 'modules/jobs.bicep' = if (deployWorkloads) {
     redisPort: redisPort
     redisUseTls: redisTls
     deployOutboxRepair: deployBackgroundWorkers
+    edgeEventsQueueId: edgeEventsQueueId
+    edgeArtifactsQueueId: edgeArtifactsQueueId
+    edgeArtifactsBucket: edgeArtifactsBucket
+    edgeR2Endpoint: edgeR2Endpoint
+    deployEdgeSecrets: deployEdgeSecrets
   }
 }
 

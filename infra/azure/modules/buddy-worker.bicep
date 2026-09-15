@@ -46,6 +46,41 @@ param redisScaleAddress string = ''
 param workerScaleRuleType string = 'redis'
 param scalingMetricsUrl string = ''
 
+// Cloudflare edge wiring (2026-09-15 plan). Identifiers only; the Queues token
+// and R2 keys are Key Vault secrets referenced only when deployEdgeSecrets is
+// true, so a revision never fails on a secret that has not been provisioned.
+param edgeWorkerUrl string = ''
+param edgeAllowedOrigins string = ''
+param edgeEventsQueueId string = ''
+param edgeArtifactsQueueId string = ''
+param edgeArtifactsBucket string = 'buddy-artifacts-preview'
+param edgeR2Endpoint string = ''
+param deployEdgeSecrets bool = false
+
+var edgeProvisionedSecrets = deployEdgeSecrets ? [
+  {
+    name: 'edge-queues-token'
+    keyVaultUrl: '${keyVaultUri}secrets/buddy-cloudflare-queues'
+    identity: identity.id
+  }
+  {
+    name: 'r2-access-key-id'
+    keyVaultUrl: '${keyVaultUri}secrets/buddy-r2-access-key-id'
+    identity: identity.id
+  }
+  {
+    name: 'r2-secret-access-key'
+    keyVaultUrl: '${keyVaultUri}secrets/buddy-r2-secret-access-key'
+    identity: identity.id
+  }
+] : []
+
+var edgeProvisionedEnv = deployEdgeSecrets ? [
+  { name: 'BUDDY_EDGE_QUEUES_TOKEN', secretRef: 'edge-queues-token' }
+  { name: 'BUDDY_R2_ACCESS_KEY_ID', secretRef: 'r2-access-key-id' }
+  { name: 'BUDDY_R2_SECRET_ACCESS_KEY', secretRef: 'r2-secret-access-key' }
+] : []
+
 var scaleAddress = empty(redisScaleAddress) ? '${redisHostName}:${redisPort}' : redisScaleAddress
 
 var redisScaleRule = {
@@ -147,7 +182,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
       ]
-      secrets: [
+      secrets: concat([
         {
           name: 'app-key'
           keyVaultUrl: '${keyVaultUri}secrets/buddy-app-key'
@@ -193,7 +228,17 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/buddy-scaling-metrics-key'
           identity: identity.id
         }
-      ]
+        {
+          name: 'edge-service-key'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-edge-service-key'
+          identity: identity.id
+        }
+        {
+          name: 'edge-delegation-secret'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-edge-delegation-secret'
+          identity: identity.id
+        }
+      ], edgeProvisionedSecrets)
     }
     template: {
       scale: {
@@ -212,7 +257,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: [
+          env: concat([
             { name: 'APP_ENV', value: 'production' }
             { name: 'CONTAINER_ROLE', value: 'worker' }
             { name: 'DB_CONNECTION', value: 'pgsql' }
@@ -251,7 +296,24 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'BUDDY_MEMORY_HUB_URL', value: memoryHubInternalUrl }
             { name: 'BUDDY_MEMORY_HUB_TOKEN', secretRef: 'hub-token' }
             { name: 'LANGSMITH_SEND_PROMPTS', value: 'true' }
-          ]
+            // Cloudflare edge (2026-09-15 plan). Every flag is an explicit false so
+            // a revision diff shows exactly which feature a release enables.
+            { name: 'BUDDY_EDGE_EVENTS', value: 'false' }
+            { name: 'BUDDY_EDGE_PROGRESS', value: 'false' }
+            { name: 'BUDDY_EDGE_SUPERVISION', value: 'false' }
+            { name: 'BUDDY_EDGE_AUTO_RECOVERY', value: 'false' }
+            { name: 'BUDDY_EDGE_ARTIFACTS', value: 'false' }
+            { name: 'BUDDY_EDGE_READ_CACHE', value: 'false' }
+            { name: 'BUDDY_EDGE_BROWSER_DIAGNOSTICS', value: 'false' }
+            { name: 'BUDDY_EDGE_SERVICE_KEY', secretRef: 'edge-service-key' }
+            { name: 'BUDDY_EDGE_DELEGATION_SECRET', secretRef: 'edge-delegation-secret' }
+            { name: 'BUDDY_EDGE_WORKER_URL', value: edgeWorkerUrl }
+            { name: 'BUDDY_EDGE_ALLOWED_ORIGINS', value: edgeAllowedOrigins }
+            { name: 'BUDDY_EDGE_EVENTS_QUEUE_ID', value: edgeEventsQueueId }
+            { name: 'BUDDY_EDGE_ARTIFACTS_QUEUE_ID', value: edgeArtifactsQueueId }
+            { name: 'BUDDY_R2_BUCKET', value: edgeArtifactsBucket }
+            { name: 'BUDDY_R2_ENDPOINT', value: edgeR2Endpoint }
+          ], edgeProvisionedEnv)
         }
       ]
     }

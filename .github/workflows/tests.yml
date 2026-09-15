@@ -68,4 +68,4 @@ jobs:
           DB_USERNAME: postgres
           DB_PASSWORD: testing
           DB_URL: ''
-        run: php artisan test --filter='CouncilTest|InterventionTest|PostgresInterventionTest|TaskConcurrencyTest|OutboxTest'
+        run: php artisan test --filter='CouncilTest|InterventionTest|PostgresInterventionTest|PostgresEdgeConcurrencyTest|TaskConcurrencyTest|OutboxTest|OutboxTopicRegistryTest|TaskProgressEventsTest|EdgeIdentityTest'
