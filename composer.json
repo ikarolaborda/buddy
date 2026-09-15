@@ -8,7 +8,7 @@
     "require": {
         "php": "^8.5",
         "algolia/algoliasearch-client-php": "^4.46",
-        "laravel/ai": "^0.3.2",
+        "laravel/ai": "^0.11",
         "laravel/framework": "^13.0",
         "laravel/horizon": "^5.49",
         "laravel/octane": "^2.18",
