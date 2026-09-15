@@ -15,3 +15,5 @@ bootstrap/cache/*.php
 storage/framework/cache/*
 storage/framework/views/*
 storage/framework/sessions/*
+cloudflare
+**/node_modules
