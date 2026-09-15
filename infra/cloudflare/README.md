@@ -68,3 +68,19 @@ Identical in both environments today; all feature flags `"false"`:
 Workers, Durable Objects, Workflows, Queues, KV and R2 are within the published startup coverage list.
 Browser Run coverage is unconfirmed for this account; the `BROWSER` binding is declared so the configuration is
 complete, but the capture path stays disabled until account-specific billing evidence exists.
+
+
+## Provisioned on 2026-09-15 (identifiers, no secrets)
+
+| Resource | Preview | Production |
+| --- | --- | --- |
+| Worker | `buddy-edge-preview` (https://buddy-edge-preview.iclaborda.workers.dev) | `buddy-edge-prod` (https://buddy-edge-prod.iclaborda.workers.dev) |
+| Queue `buddy-events-*` | `610237297b954e34a27e25c7bfa28fbd` | `337bb34f4aba431688862c9018934ec3` |
+| Queue `buddy-events-dlq-*` | `ac39dcad890744488b819b3544e6ecb2` | `2bf3a0b2d52e4dd89c0eb7714f89e15b` |
+| Queue `buddy-artifacts-*` | `2c333fabeda64128b8edd9416011e928` | `50a574635562411c9f9ac7d22b003c0f` |
+| Queue `buddy-artifacts-dlq-*` | `cf22cec25953419c9786afe74cc1706b` | `eeb9ea9aea254c6c9d54a2063802e9a5` |
+| R2 bucket | `buddy-artifacts-preview` (weur) | `buddy-artifacts-prod` (weur) |
+| KV namespace | `BUDDY_READ_CACHE_PREVIEW` `be8133c69abc48fcbae99f3bbddb3a41` | `BUDDY_READ_CACHE_PROD` `6a4cb7f58c1546d490707be5ad1f300b` |
+| Secret | `EDGE_SERVICE_KEY` (from Key Vault `buddy-edge-service-key`) | same |
+
+Created with the wrangler OAuth login; no API token was used or stored.
