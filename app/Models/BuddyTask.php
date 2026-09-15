@@ -90,6 +90,11 @@ class BuddyTask extends Model
         return $this->hasMany(BuddyArtifact::class);
     }
 
+    public function artifactUploads(): HasMany
+    {
+        return $this->hasMany(BuddyArtifactUpload::class);
+    }
+
     public function events(): HasMany
     {
         return $this->hasMany(BuddyTaskEvent::class);
@@ -108,6 +113,11 @@ class BuddyTask extends Model
     public function questions(): HasMany
     {
         return $this->hasMany(BuddyQuestion::class);
+    }
+
+    public function diagnosticCaptures(): HasMany
+    {
+        return $this->hasMany(BuddyDiagnosticCapture::class);
     }
 
     public function memoryReferences(): HasMany

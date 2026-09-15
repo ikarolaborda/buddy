@@ -3,9 +3,13 @@
 namespace App\Providers;
 
 use App\Ai\Prompting\PromptRegistry;
+use App\Contracts\ArtifactObjectStore;
+use App\Contracts\BrowserCaptureDispatcher;
 use App\Contracts\EcosystemKnowledgeGateway;
 use App\Contracts\MemoryGateway;
 use App\Enums\MemoryBackend;
+use App\Services\Artifacts\R2ObjectStore;
+use App\Services\Diagnostics\HttpWorkerCaptureDispatcher;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\Knowledge\AlgoliaEcosystemKnowledgeGateway;
 use App\Services\Knowledge\NullEcosystemKnowledgeGateway;
@@ -16,6 +20,7 @@ use App\Services\QdrantMemoryService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -35,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
         });
         $this->app->singleton(EvaluatorOptimizerService::class);
         $this->app->singleton(PromptRegistry::class);
+        $this->app->singleton(BrowserCaptureDispatcher::class, HttpWorkerCaptureDispatcher::class);
+        $this->app->singleton(ArtifactObjectStore::class, fn () => new R2ObjectStore(Storage::disk('r2')));
 
         $this->app->singleton(MemoryGateway::class, function ($app) {
             $backend = MemoryBackend::tryFrom((string) config('buddy.memory.backend'))

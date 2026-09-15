@@ -9,5 +9,6 @@ enum ApiScope: string
     case MemoryRead = 'memory:read';
     case MemoryWrite = 'memory:write';
     case InterventionsExecute = 'interventions:execute';
+    case DiagnosticsCapture = 'diagnostics:capture';
     case Admin = 'admin';
 }
