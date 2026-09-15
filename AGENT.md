@@ -1,5 +1,16 @@
 # Buddy Agent Protocol
 
+## Current runtime and implementation handoff
+
+Use the deployed Azure MCP endpoint at `https://buddy.aerolambda.tech/api/mcp` for real evaluations.
+Read the [current handoff](docs/handoffs/2026-09-15-cloudflare-buddy.md),
+[Cloudflare implementation plan](docs/plans/2026-09-15-cloudflare-buddy-usability-performance.md),
+and [council and interventions guide](docs/recipes/azure-council-and-interventions.md).
+They supersede the historical transport and capability examples below where those examples conflict.
+Local Docker evaluation examples are not the production workflow.
+Buddy now supports bounded service diagnosis and recovery of eligible failed evaluations.
+The planned Cloudflare capabilities are not yet implemented.
+
 This document is intended for LLMs and coding agents that interact with Buddy as a tool. It defines when to escalate, how to submit problems, how to interpret responses, and what to avoid.
 
 Buddy is available via two transports: **MCP** (stdio JSON-RPC) and **REST API** (HTTP JSON). Both expose the same capabilities. Use whichever transport your runtime supports.

@@ -1,20 +1,40 @@
 # Buddy — Claude Code Project Instructions
 
+## Current handoff and production target
+
+Read the [2026-09-15 Cloudflare handoff](docs/handoffs/2026-09-15-cloudflare-buddy.md)
+and [implementation plan](docs/plans/2026-09-15-cloudflare-buddy-usability-performance.md) before resuming this work.
+The plan covers all six Cloudflare capabilities and the Redis autoscaling fault.
+Its proposed features are not deployed behavior.
+
+Run real evaluations through the deployed Azure Buddy at `https://buddy.aerolambda.tech/api/mcp`.
+Do not use local or Pointerpro Buddy containers for real evaluations.
+Local tests can use AI and HTTP fakes.
+The Azure council uses Astra `xhigh` as chairman and three GPT-5.5 `high` reviewers.
+Keep Azure as the default and `BUDDY_COUNCIL_WORKERS_AI_SOL=false` under the credit-only constraint.
+Search shared memory with project `buddy` and query `Cloudflare implementation plan September 15 2026 P0 P8`.
+
 ## What This Is
 
 Buddy is an evaluator-optimizer sidecar agent for engineering workflows. It is called by primary coding agents (Claude, Cursor, Copilot, etc.) when work becomes slow, ambiguous, or repeatedly unsuccessful.
 
-Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints behind API-key auth). It runs inside Docker (PHP 8.5) and uses GPT-5.4 via laravel/ai for AI evaluation. The production architecture (API-key auth, idempotency, outbox, task leases, MemoryGateway, prompt modules, Azure IaC) is described in docs/plans/2026-07-21-buddy-production-sidecar-architecture.md and docs/adr/.
+Buddy exposes MCP tools and an authenticated REST API from Azure Container Apps.
+It uses PHP 8.5, Laravel, allowed Azure model deployments, and the governed memory hub.
+The [council and interventions guide](docs/recipes/azure-council-and-interventions.md) describes the current operational behavior.
+The production architecture is described in docs/plans/2026-07-21-buddy-production-sidecar-architecture.md and docs/adr/.
 
 ## Stack
 
 - Laravel 13.x, PHP 8.5+
 - laravel/ai v0.3.2 (agents, structured output, tools, embeddings, testing fakes)
-- Qdrant (episodic memory, semantic search)
+- Qdrant through the governed Go memory hub (episodic memory, semantic search)
 - SQLite (dev) / PostgreSQL (prod)
-- Docker (PHP 8.5 + Qdrant on qdrant-memory_default network)
+- Azure Container Apps (production API and worker), Docker for builds and local development
 
 ## Commands
+
+Local development commands do not change the production evaluation target.
+Do not reset a database or replace an archive without explicit authorization for that database.
 
 - `composer dev` — Start dev server + queue + logs + vite
 - `php artisan test` — Run test suite
@@ -26,7 +46,7 @@ Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints
 - `php artisan buddy:cil-sync-suites` — Sync CIL suites to LangSmith datasets
 - `php artisan buddy:cil-replay <candidate> <suite>` — Replay baseline vs candidate prompts
 - `php artisan buddy:cil-decide <candidate>` — Record a human promotion decision
-- `php artisan migrate:fresh` — Reset database
+- `php artisan migrate:fresh` — Reset an explicitly authorized disposable development database
 - `docker compose build` — Build Docker image
 - `docker compose up -d` — Start app + queue worker + redis
 - `bin/buddy-mcp-bridge` — Thin stdio-to-HTTPS MCP bridge (needs BUDDY_BASE_URL + BUDDY_API_KEY)
@@ -49,15 +69,15 @@ Buddy exposes 8 MCP tools and a REST API (health endpoints plus 6 task endpoints
 - PHPUnit 12.x with `laravel/ai` fakes
 - `Agent::fake()` requires PHP **arrays** (not JSON strings) for structured output agents
 - All OpenAI structured output schema fields must have `->required()` (OpenAI strict mode)
-- Tests run against SQLite with no external service dependencies
+- Local tests use SQLite and fakes. PostgreSQL suites cover database-specific concurrency and constraints.
 
 ## Key Architecture Decisions
 
 - Two AI agents: `EvaluatorOptimizerAgent` (code evaluation) and `PromptRefinementAgent` (task refinement)
 - Single escalation hop only — Buddy never spawns other Buddy instances
-- Qdrant via Http facade (no extra client package)
-- MCP server as Artisan command implementing JSON-RPC 2.0 stdio transport
-- Secrets stay in `.env`, never in Claude config — mount `.env` as Docker volume
+- Production memory uses the governed Go hub through `MemoryGateway`.
+- Production MCP uses native Streamable HTTP. The Artisan stdio server is for local development.
+- Keep deployment secrets in their secret stores. Preserve local `.env` files and database archives.
 
 ## MCP Configuration
 

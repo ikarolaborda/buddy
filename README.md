@@ -5,6 +5,11 @@
 
 An evaluator-optimizer sidecar agent for engineering workflows. Buddy helps primary coding agents when their work becomes slow, ambiguous, or repeatedly unsuccessful.
 
+The [Cloudflare implementation plan](docs/plans/2026-09-15-cloudflare-buddy-usability-performance.md)
+covers live progress, health supervision, artifact storage, background queues, read caching, browser diagnostics, and the Redis autoscaling repair.
+Read the [Claude handoff](docs/handoffs/2026-09-15-cloudflare-buddy.md) for the current Azure runtime and the first implementation task.
+These documents describe proposed work, not newly deployed features.
+
 ## What is Buddy?
 
 Buddy is not a generic chatbot. It is a specialized engineering evaluator that receives structured problem packets from primary coding agents, searches its episodic memory for similar past problems, generates and evaluates solution hypotheses, and returns either a concrete recommendation or a rejection with actionable feedback.
@@ -106,7 +111,7 @@ The asynchronous evaluation lifecycle, end to end:
 ## Tech Stack
 
 The [Azure council and interventions guide](docs/recipes/azure-council-and-interventions.md)
-describes the per-task backup council, dependency diagnostics, and recovery of failed evaluations.
+describes the current default Azure council, dependency diagnostics, and recovery of failed evaluations.
 
 | Component       | Technology                                                   |
 |-----------------|--------------------------------------------------------------|
