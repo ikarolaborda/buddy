@@ -38,6 +38,7 @@ class ProcessArtifactJob implements ShouldBeUnique, ShouldQueue
         public int $artifactId,
         public string $sha256,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.fast'));
         $this->afterCommit();
     }
 

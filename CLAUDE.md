@@ -29,6 +29,9 @@ The Cloudflare edge work (branch `ikaro/cloudflare-p0-p8`) is documented in
 [cloudflare-edge-deployment.md](docs/recipes/cloudflare-edge-deployment.md) (Worker package under `cloudflare/buddy-edge/`)
 the [evidence manifest](docs/releases/2026-09-15-cloudflare-evidence-manifest.md)
 and the [AI model credit coverage report](docs/releases/2026-09-15-ai-model-credit-coverage.md).
+Queue lanes and the Horizon worker (why Redis stayed and Kafka/RabbitMQ were rejected) are
+[ADR 0014](docs/adr/0014-queue-lanes-and-in-replica-concurrency.md) with the release and rollback
+procedure in [queue-lanes-release.md](docs/recipes/queue-lanes-release.md).
 The flags ship false in the repository; production runs with events, progress, supervision, auto-recovery,
 artifacts and read cache enabled and browser diagnostics off (handoff, "Go-live"). Azure holds no Cloudflare
 credential: every Azure-to-Cloudflare call goes through the Worker with the shared service key.
@@ -55,7 +58,9 @@ Do not reset a database or replace an archive without explicit authorization for
 - `php artisan buddy:client:create <name>` — Create an API client and issue a key
 - `php artisan buddy:outbox-relay --once` — Republish unprocessed outbox messages
 - `php artisan buddy:outbox-replay --dry-run` — List or replay remote (Cloudflare) outbox deliveries; `--list-quarantined` shows rejected unknown topics
-- `php artisan buddy:queue:synthetic --count=30 --seconds=90 --confirm` — Bounded no-inference backlog for the autoscaling proof (P0)
+- `php artisan buddy:queue:synthetic --count=30 --seconds=90 --lane=evaluations --confirm` — Bounded no-inference backlog on one lane for autoscaling proofs (P0, ADR 0014)
+- `php artisan buddy:queue:report --since=24h` — Queue wait, runtime, failures and max concurrency per window (`--json` for machines)
+- `php artisan horizon` — The production worker command: one fixed-size Horizon supervisor per queue lane (ADR 0014)
 - `php artisan buddy:artifacts:cleanup --dry-run` — Expire abandoned uploads, release quota, purge past retention (P5)
 - `php artisan buddy:cil-report` — Report-only Controlled Improvement Loop metrics
 - `php artisan buddy:cil-sync-suites` — Sync CIL suites to LangSmith datasets

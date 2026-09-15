@@ -10,6 +10,7 @@
         "algolia/algoliasearch-client-php": "^4.46",
         "laravel/ai": "^0.3.2",
         "laravel/framework": "^13.0",
+        "laravel/horizon": "^5.49",
         "laravel/octane": "^2.18",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.0"

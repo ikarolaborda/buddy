@@ -28,6 +28,7 @@ class PrefetchEcosystemKnowledgeJob implements ShouldBeUniqueUntilProcessing, Sh
     public function __construct(
         protected BuddyTask $task,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.fast'));
         $this->afterCommit();
     }
 

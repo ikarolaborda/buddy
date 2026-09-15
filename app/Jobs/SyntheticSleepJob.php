@@ -26,7 +26,9 @@ class SyntheticSleepJob implements ShouldQueue
         public readonly string $batchId,
         public readonly int $index,
         public readonly int $seconds,
-    ) {}
+    ) {
+        $this->onQueue((string) config('buddy.queues.lanes.evaluations'));
+    }
 
     public function handle(): void
     {

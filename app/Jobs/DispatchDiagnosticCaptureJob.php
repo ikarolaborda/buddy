@@ -36,6 +36,7 @@ class DispatchDiagnosticCaptureJob implements ShouldBeEncrypted, ShouldQueue
         public readonly string $captureId,
         #[\SensitiveParameter] private readonly string $callbackToken,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.fast'));
         $this->afterCommit();
     }
 

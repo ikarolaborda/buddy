@@ -1,6 +1,7 @@
-// No-ingress worker app scaling on Redis queue depth, fixed bounded
-// processes per replica. Graceful shutdown must exceed the longest
-// admitted job (plan §8.3/§8.4).
+// No-ingress worker app running one Horizon supervisor per queue lane with a
+// fixed number of processes each (ADR 0014); replicas scale on per-lane
+// demand divided by that capacity. Graceful shutdown covers any evaluation
+// that respects its provider timeout; longer jobs rely on lease recovery.
 
 param environment string
 param location string
@@ -45,6 +46,14 @@ param redisScaleAddress string = ''
 @allowed(['redis', 'metrics-api'])
 param workerScaleRuleType string = 'redis'
 param scalingMetricsUrl string = ''
+
+// Jobs one replica runs at once per lane. These feed both the Horizon pools
+// (BUDDY_WORKERS_*) and the scale rule targets, so replicas = ceil(lane
+// demand / capacity); config/buddy.php carries the same defaults and
+// tests/Feature/QueueLanesTest fails when they drift apart.
+param workerEvaluationCapacity int = 6
+param workerCouncilCapacity int = 1
+param workerFastCapacity int = 2
 
 // Cloudflare edge wiring (2026-09-15 plan). Identifiers only; the Queues token
 // and R2 keys are Key Vault secrets referenced only when deployEdgeSecrets is
@@ -102,14 +111,35 @@ var redisScaleRule = {
   }
 }
 
-var metricsApiScaleRule = {
-  name: 'queue-depth-api'
+var evaluationsScaleRule = {
+  name: 'lane-evaluations'
   custom: {
     type: 'metrics-api'
     metadata: {
       url: scalingMetricsUrl
-      valueLocation: 'pending'
-      targetValue: '10'
+      valueLocation: 'scaling.evaluations'
+      targetValue: string(workerEvaluationCapacity)
+      authMode: 'apiKey'
+      method: 'header'
+      keyParamName: 'X-Buddy-Scaling-Key'
+    }
+    auth: [
+      {
+        secretRef: 'scaling-metrics-key'
+        triggerParameter: 'apiKey'
+      }
+    ]
+  }
+}
+
+var councilScaleRule = {
+  name: 'lane-council'
+  custom: {
+    type: 'metrics-api'
+    metadata: {
+      url: scalingMetricsUrl
+      valueLocation: 'scaling.council'
+      targetValue: string(workerCouncilCapacity)
       authMode: 'apiKey'
       method: 'header'
       keyParamName: 'X-Buddy-Scaling-Key'
@@ -241,25 +271,27 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
       ], edgeProvisionedSecrets)
     }
     template: {
+      terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 1
         maxReplicas: 4
-        rules: [
-          workerScaleRuleType == 'metrics-api' ? metricsApiScaleRule : redisScaleRule
-        ]
+        rules: workerScaleRuleType == 'metrics-api' ? [evaluationsScaleRule, councilScaleRule] : [redisScaleRule]
       }
       containers: [
         {
           name: 'buddy-worker'
           image: '${acrLoginServer}/buddy:${imageTag}'
-          command: ['php', 'artisan', 'queue:work', 'redis', '--timeout=1860', '--tries=3', '--max-jobs=500']
+          command: ['php', 'artisan', 'horizon']
           resources: {
-            cpu: json('0.5')
-            memory: '1Gi'
+            cpu: json('1.0')
+            memory: '2Gi'
           }
           env: concat([
             { name: 'APP_ENV', value: 'production' }
             { name: 'CONTAINER_ROLE', value: 'worker' }
+            { name: 'BUDDY_WORKERS_EVALUATIONS', value: string(workerEvaluationCapacity) }
+            { name: 'BUDDY_WORKERS_COUNCIL', value: string(workerCouncilCapacity) }
+            { name: 'BUDDY_WORKERS_FAST', value: string(workerFastCapacity) }
             { name: 'DB_CONNECTION', value: 'pgsql' }
             { name: 'DB_HOST', value: postgresFqdn }
             { name: 'DB_DATABASE', value: 'buddy' }

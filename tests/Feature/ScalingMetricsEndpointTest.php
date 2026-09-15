@@ -24,14 +24,24 @@ class ScalingMetricsEndpointTest extends TestCase
 
         $this->withHeaders(['X-Buddy-Scaling-Key' => 'nope'])->getJson('/api/internal/scaling/queue-depth')->assertUnauthorized();
 
-        Queue::shouldReceive('size')->with('default')->once()->andReturn(7);
+        Queue::shouldReceive('size')->with('evaluations')->once()->andReturn(7);
+        Queue::shouldReceive('size')->with('council')->once()->andReturn(2);
+        Queue::shouldReceive('size')->with('fast')->once()->andReturn(0);
+        Queue::shouldReceive('size')->with('default')->once()->andReturn(1);
 
         $this->withHeaders(['X-Buddy-Scaling-Key' => 'scaler-secret'])
             ->getJson('/api/internal/scaling/queue-depth')
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('queue', 'default')
-            ->assertJsonPath('pending', 7);
+            ->assertJsonPath('pending', 1)
+            ->assertJsonPath('lanes.evaluations.queue', 'evaluations')
+            ->assertJsonPath('lanes.evaluations.pending', 7)
+            ->assertJsonPath('lanes.council.demand', 2)
+            ->assertJsonPath('scaling.evaluations', 8)
+            ->assertJsonPath('scaling.council', 2)
+            ->assertJsonPath('scaling.fast', 0)
+            ->assertJsonPath('capacity.evaluations', 6);
     }
 
     public function test_synthetic_load_command_refuses_without_confirmation_and_dispatches_bounded_jobs(): void

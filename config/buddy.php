@@ -279,7 +279,44 @@ return [
 
     'scaling' => [
         'metrics_key' => env('BUDDY_SCALING_METRICS_KEY'),
-        'queue' => env('REDIS_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Queue lanes and per-replica capacity
+    |--------------------------------------------------------------------------
+    |
+    | Fourteen days of production runs (2026-09-01..15) never overlapped: one
+    | queue:work process per replica served evaluations, councils and
+    | housekeeping from a single list, so a 7-12 minute council blocked the
+    | 60-second evaluations behind it and bursts of agents serialized
+    | (ADR 0014). Every job pins itself to a lane in its constructor and the
+    | worker runs one Horizon supervisor per lane, so lanes are isolated and a
+    | lane's capacity is the number of its jobs one replica runs at once. The
+    | autoscaling signal divides lane demand by these capacities, so a
+    | capacity change here must change the Bicep scale rule target with it
+    | (tests/Feature/QueueLanesTest pins them together).
+    |
+    | 'legacy' is the list the previous worker consumed. It stays consumed so
+    | jobs enqueued by an older API revision drain during a rollout, and it is
+    | the rollback target: pointing the three lane variables at 'default'
+    | routes everything back to it without touching the worker.
+    |
+    */
+
+    'queues' => [
+        'lanes' => [
+            'evaluations' => env('BUDDY_QUEUE_EVALUATIONS', 'evaluations'),
+            'council' => env('BUDDY_QUEUE_COUNCIL', 'council'),
+            'fast' => env('BUDDY_QUEUE_FAST', 'fast'),
+            'legacy' => env('REDIS_QUEUE', 'default'),
+        ],
+        'capacity' => [
+            'evaluations' => (int) env('BUDDY_WORKERS_EVALUATIONS', 6),
+            'council' => (int) env('BUDDY_WORKERS_COUNCIL', 1),
+            'fast' => (int) env('BUDDY_WORKERS_FAST', 2),
+            'legacy' => (int) env('BUDDY_WORKERS_LEGACY', 1),
+        ],
     ],
 
     /*

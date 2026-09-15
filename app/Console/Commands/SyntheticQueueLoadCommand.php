@@ -18,6 +18,7 @@ class SyntheticQueueLoadCommand extends Command
     protected $signature = 'buddy:queue:synthetic
         {--count=30 : Number of jobs to dispatch (max 200)}
         {--seconds=90 : Seconds each job sleeps (max 300)}
+        {--lane=evaluations : Lane to load: evaluations, council, fast or legacy}
         {--confirm : Required; acknowledges that this occupies production workers}';
 
     protected $description = 'Dispatch synthetic no-inference jobs for a bounded autoscaling experiment';
@@ -33,9 +34,16 @@ class SyntheticQueueLoadCommand extends Command
         $count = max(1, min(200, (int) $this->option('count')));
         $seconds = max(1, min(300, (int) $this->option('seconds')));
         $batch = 'syn-'.Str::lower(Str::random(8));
-        $queue = (string) config('buddy.scaling.queue', 'default');
+        $lane = (string) $this->option('lane');
+        $queue = config('buddy.queues.lanes.'.$lane);
 
-        $this->line('Queue key under measurement: '.$this->queueKey($queue));
+        if (! is_string($queue) || $queue === '') {
+            $this->error("Unknown lane '{$lane}'; use evaluations, council, fast or legacy.");
+
+            return self::FAILURE;
+        }
+
+        $this->line("Lane {$lane}, queue key under measurement: ".$this->queueKey($queue));
         $this->line('Pending before dispatch: '.$this->pending($queue));
 
         foreach (range(1, $count) as $index) {

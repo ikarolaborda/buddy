@@ -33,6 +33,7 @@ class EvaluateTaskJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     public function __construct(
         protected BuddyTask $task,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.evaluations'));
         $this->afterCommit();
     }
 

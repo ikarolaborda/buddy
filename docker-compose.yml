@@ -30,7 +30,7 @@ services:
       - REDIS_HOST=redis
     networks:
       - qdrant-memory_default
-    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=1860"]
+    command: ["php", "artisan", "horizon"]
 
   redis:
     image: redis:7-alpine

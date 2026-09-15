@@ -71,6 +71,11 @@ param workerScaleRuleType string = 'redis'
 @description('Public URL of the Buddy API queue-depth endpoint used by the metrics-api scale rule.')
 param scalingMetricsUrl string = ''
 
+@description('Jobs one worker replica runs at once per lane (ADR 0014); mirrors config/buddy.php queues.capacity.')
+param workerEvaluationCapacity int = 6
+param workerCouncilCapacity int = 1
+param workerFastCapacity int = 2
+
 @description('Cloudflare edge wiring: identifiers only. Secrets are Key Vault references enabled by deployEdgeSecrets.')
 param edgeWorkerUrl string = ''
 param edgeAllowedOrigins string = ''
@@ -228,6 +233,9 @@ module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployB
     redisScaleAddress: redisScaleAddress
     workerScaleRuleType: workerScaleRuleType
     scalingMetricsUrl: scalingMetricsUrl
+    workerEvaluationCapacity: workerEvaluationCapacity
+    workerCouncilCapacity: workerCouncilCapacity
+    workerFastCapacity: workerFastCapacity
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
     azureOpenAiUrl: azureOpenAiUrl
     azureOpenAiDeployment: azureOpenAiDeployment

@@ -25,6 +25,7 @@ class DeliverOutboxRemoteJob implements ShouldQueue
     public function __construct(
         public readonly int $outboxMessageId,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.fast'));
         $this->afterCommit();
     }
 

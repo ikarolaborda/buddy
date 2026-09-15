@@ -43,6 +43,7 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         protected BuddyTask $task,
     ) {
         $this->executionOwner = 'council:'.Str::uuid();
+        $this->onQueue((string) config('buddy.queues.lanes.council'));
         $this->afterCommit();
     }
 

@@ -30,6 +30,7 @@ class PurgeArtifactObjectJob implements ShouldQueue
     public function __construct(
         public int $artifactId,
     ) {
+        $this->onQueue((string) config('buddy.queues.lanes.fast'));
         $this->afterCommit();
     }
 
