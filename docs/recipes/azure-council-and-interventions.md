@@ -139,6 +139,21 @@ needs no image. A council already running keeps its old replica for up to the
 production: `ContainerAppConsoleLogs_CL | where Log_s contains "Council chair
 request"` shows `phase` and `format` per chair call.
 
+Acceptance record (2026-09-15, switch on in production since 20:31 UTC):
+
+- Run 1 (task 01M2KB4EVMQT12M56PY6TK9CHD, image ce6300d): frame under
+  `json_schema` succeeded (4 hypotheses), positions and attacks completed,
+  the verdict call ended with Azure status `failed` and the reason was not
+  captured; the switch was rolled back, a replay of the verdict request at
+  production settings completed under the strict schema in 88 s, and commit
+  9ee7738 now carries Azure's error code and message into the failure.
+- Run 2 (task 01M2KCWJ6X5JXBKRGE1RVKAYQ9, image 9ee7738): frame 20:42:16 and
+  verdict 20:48:10 both requested as `json_schema`, one request each (no
+  re-ask), all three reviewers present in both rounds, full eleven-field
+  verdict, 7 min 54 s end to end.
+- Residual: one unexplained provider failure in two runs; if a strict-mode
+  council fails again, the surfaced reason decides whether to keep the mode.
+
 ## Sol in the Workers AI council
 
 Set `BUDDY_COUNCIL_WORKERS_AI_SOL=true` and configure `OPENROUTER_API_KEY`

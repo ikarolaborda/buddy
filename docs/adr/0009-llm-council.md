@@ -102,5 +102,11 @@ enabling: production history showed no chair JSON failures (the benefit is
 preventive), and a background-mode probe of `gpt-6-astra` with the frame
 schema completed with exactly the expected shape. Each chair call logs
 `Council chair request` with its phase and format so a production run can
-prove which mode was used.
+prove which mode was used. Enabled in production on 2026-09-15 after a full
+council completed with both chair calls in strict mode; the first attempt
+had failed at the verdict with an Azure status `failed` whose reason the
+normaliser did not carry (fixed in 9ee7738, see the council guide's
+acceptance record). The council's own verdict on that day kept the reviewer
+seats on `json_object` and recorded a shape-only strict member schema as a
+separately gated experiment.
 

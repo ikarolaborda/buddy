@@ -281,8 +281,13 @@ Buddy 01M2K6KP…, 01M2K6KX…, 01M2K6M8…, 01M2K6MJ…, 01M2K6MW…, 01M2K6N6�
 recompute the cap first (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) raise the
 15-evaluation cap only with a higher Azure OpenAI quota; (3) measure the fast
 lane's queue wait under a mixed 15-evaluation load before resizing its
-2-process pool; (4) council transport consolidation onto laravel/ai only
-through a CouncilTransport seam with fixtures, chairman last; (5) add a
+2-process pool; (4) council transport consolidation onto laravel/ai was assessed and
+rejected for now (background-response lifecycle, parallel rounds); the
+chairman now answers under a strict JSON schema on Azure
+(`BUDDY_COUNCIL_AZURE_STRICT_CHAIR=true`, ADR 0009 amendment, acceptance
+record in the council guide), and the council's verdict 01M2KCWJ6X5JXBKRGE1RVKAYQ9
+keeps reviewers on json_object with a shape-only strict member schema as a
+separately gated experiment; (5) add a
 missing-heartbeat alert for the queue-health job; (6) rotate the scaling key
 every 90 days (recipe); (7) the accepted `extract-zip` advisory in the Worker
 package is due for review by 2026-10-15; (8) rollback keeps the all-lane
