@@ -42,7 +42,7 @@ export interface EventEnvelope {
   state_version: number;
   generation: number;
   occurred_at: string;
-  trace_id: string;
+  trace_id: string | null;
   data: JsonObject;
 }
 
@@ -67,10 +67,14 @@ export function validateEnvelope(input: unknown): EnvelopeValidation {
   if (candidate.schema_version !== SUPPORTED_SCHEMA_VERSION) {
     return { ok: false, reason: "unsupported_schema_version", unsupported_schema: true };
   }
-  for (const field of ["event_id", "type", "client_id", "task_id", "occurred_at", "trace_id"] as const) {
+  for (const field of ["event_id", "type", "client_id", "task_id", "occurred_at"] as const) {
     if (!isNonEmptyString(candidate[field])) {
       return { ok: false, reason: `missing_${field}`, unsupported_schema: false };
     }
+  }
+  // Azure emits a null trace id when no trace is attached; an empty string is still rejected.
+  if (candidate.trace_id !== null && candidate.trace_id !== undefined && !isNonEmptyString(candidate.trace_id)) {
+    return { ok: false, reason: "missing_trace_id", unsupported_schema: false };
   }
   if (!(candidate.type as string).startsWith("buddy.task.")) {
     return { ok: false, reason: "unknown_type", unsupported_schema: false };
