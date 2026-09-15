@@ -290,7 +290,11 @@
       if (body.progress.phase && !state.phaseStarts[body.progress.phase]) {
         state.phaseStarts[body.progress.phase] = body.progress.phase_started_at || null;
       }
-      if (body.progress.status === "completed" || body.progress.status === "failed" || body.progress.status === "closed") state.terminal = true;
+      if (body.progress.status === "completed" || body.progress.status === "failed" || body.progress.status === "closed") {
+        state.terminal = true;
+        // A finished task never opens a socket, so say so instead of leaving "Connecting" on screen.
+        if (state.mode !== "closed") state.mode = "closed";
+      }
       if (typeof body.progress.progress_sequence === "number" && body.progress.progress_sequence > state.lastSequence && (!body.events || !body.events.length)) {
         state.lastSequence = body.progress.progress_sequence;
       }

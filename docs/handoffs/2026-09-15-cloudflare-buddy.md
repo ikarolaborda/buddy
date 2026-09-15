@@ -206,9 +206,22 @@ Implemented in parallel on this branch (see the pull request for the file list a
 - Key Vault `kv-buddy-credit`: `buddy-edge-service-key`, `buddy-edge-delegation-secret`, `buddy-scaling-metrics-key` created with random values on 2026-09-15 (unused until the release). Still to provision by an operator: `buddy-cloudflare-queues` (Queues write token), `buddy-r2-access-key-id`, `buddy-r2-secret-access-key` (R2 token scoped to `buddy-artifacts-*`).
 - The local `CLOUDFLARE_API_TOKEN` in `buddy/.env` is rejected as `Invalid API Token` (code 1000) even from the expected IP 213.13.8.191; treat it as dead and do not rely on it. Wrangler holds a separate OAuth login for `iclaborda@aerolambda.tech` (account `63cc5315181fb5f7fbf59dac3efcf76e`), which is the credential used for any preview provisioning; see the "Cloudflare preview" note below for what was created. Commands are listed in [cloudflare-edge-deployment.md](../recipes/cloudflare-edge-deployment.md).
 
+### Go-live (2026-09-15, second session)
+
+The user asked for no dark deploy, so the edge is live. Commits `e60e8b1` (credit report, resources), `230c030` (Worker-mediated transport: Azure holds no Cloudflare token or R2 key), `57688e3`/`dd27b2b` (Worker ingestion, signed upload/download tokens, object API), `010a37e` (Worker runs before assets so the dashboard carries security headers), `1b5afdb` (null trace id accepted).
+
+| Item | State |
+| --- | --- |
+| Cloudflare resources | queues `buddy-events-{preview,prod}` + DLQs, `buddy-artifacts-{preview,prod}` + DLQs; R2 `buddy-artifacts-{preview,prod}`; KV `BUDDY_READ_CACHE_{PREVIEW,PROD}`; ids in `infra/cloudflare/README.md` |
+| Workers | `buddy-edge-preview` and `buddy-edge-prod` on `iclaborda.workers.dev`, secret `EDGE_SERVICE_KEY` from Key Vault; production vars `SUPERVISION_ENABLED`, `AUTO_RECOVERY_ENABLED`, `READ_CACHE_ENABLED` true, `BROWSER_DIAGNOSTICS_ENABLED` false |
+| Azure | image `230c030`; API `ca-buddy-api-credit--flags-230c030`, worker `ca-buddy-worker-credit--flags-230c030`, all four jobs on `230c030`; `BUDDY_EDGE_WORKER_URL`/`ALLOWED_ORIGINS` = the prod Worker; flags `EVENTS`, `PROGRESS`, `SUPERVISION`, `AUTO_RECOVERY`, `ARTIFACTS`, `READ_CACHE` true; `BROWSER_DIAGNOSTICS` false |
+| Verified end to end | real evaluation task `01M2K0H9ZYC7EZ2S4N87XRDTPG`: four events (queued, memory, evaluation, completed) reached the Worker queue after the trace-id fix (13 pending deliveries replayed, 0 failed), Durable Object counters events 26 / callbacks 1 / workflows 1, supervisor instance `sup-01M2K0M082F57RC6KCKVQ4MQHH-1` completed; dashboard opened in Chrome through a view ticket showing the timeline, queue wait 1 s, model time 15 s; artifact 97 reserved, uploaded through the Worker, finalized (sha256), summary redacted, downloaded byte-identical, deleted and revoked |
+| Verification client | `edge-verifier` (client #12), key expires 2026-09-22; revoke earlier with `ApiKeyService::revoke` if unwanted |
+| Still off | `BUDDY_EDGE_BROWSER_DIAGNOSTICS`: Browser Run is not in the startup credit coverage list; the Workers Paid plan includes 10 browser hours per month and the pilot quota needs about 2.5, so enabling it costs nothing extra but is a billing decision the founder must take (docs/releases/2026-09-15-ai-model-credit-coverage.md) |
+
 ### Cloudflare preview
 
-Preview resources (`buddy-events-preview`, `buddy-events-dlq-preview`, `buddy-artifacts-preview`, `buddy-artifacts-dlq-preview`, R2 `buddy-artifacts-preview`, KV `BUDDY_READ_CACHE_PREVIEW`, Worker `buddy-edge-preview`) were not created in this session. Wrangler's OAuth session can create them; the exact commands are in [cloudflare-edge-deployment.md](../recipes/cloudflare-edge-deployment.md). Until they exist, every Cloudflare-dependent flag stays false and the Worker package is validated only by its own tests and a dry-run deploy.
+Preview resources exist alongside production (table above); `buddy-edge-preview` passes the same fourteen-check smoke test as production and is the place to try Worker changes before `wrangler deploy --env production`.
 
 ### Gates
 
