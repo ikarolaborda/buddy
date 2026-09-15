@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\SyntheticSleepJob;
+use App\Models\BuddyTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
@@ -24,6 +25,9 @@ class ScalingMetricsEndpointTest extends TestCase
 
         $this->withHeaders(['X-Buddy-Scaling-Key' => 'nope'])->getJson('/api/internal/scaling/queue-depth')->assertUnauthorized();
 
+        BuddyTask::factory()->create(['operation' => 'evaluate', 'queued_at' => now()->subSeconds(45)]);
+        BuddyTask::factory()->create(['operation' => 'evaluate', 'queued_at' => now()->subSeconds(90), 'worker_started_at' => now()->subSeconds(88)]);
+
         Queue::shouldReceive('size')->with('evaluations')->once()->andReturn(7);
         Queue::shouldReceive('size')->with('council')->once()->andReturn(2);
         Queue::shouldReceive('size')->with('fast')->once()->andReturn(0);
@@ -41,7 +45,9 @@ class ScalingMetricsEndpointTest extends TestCase
             ->assertJsonPath('scaling.evaluations', 8)
             ->assertJsonPath('scaling.council', 2)
             ->assertJsonPath('scaling.fast', 0)
-            ->assertJsonPath('capacity.evaluations', 6);
+            ->assertJsonPath('capacity.evaluations', 5)
+            ->assertJsonPath('waiting.evaluate.count', 1)
+            ->assertJsonPath('waiting.evaluate.oldest_wait_s', 45);
     }
 
     public function test_synthetic_load_command_refuses_without_confirmation_and_dispatches_bounded_jobs(): void

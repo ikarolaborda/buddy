@@ -51,7 +51,13 @@ param scalingMetricsUrl string = ''
 // (BUDDY_WORKERS_*) and the scale rule targets, so replicas = ceil(lane
 // demand / capacity); config/buddy.php carries the same defaults and
 // tests/Feature/QueueLanesTest fails when they drift apart.
-param workerEvaluationCapacity int = 6
+//
+// evaluations x maxReplicas is the structural provider cap: Azure OpenAI
+// gpt-6-astra allows 100K tokens/min and an evaluation spends ~6K tokens in
+// ~60 s, so 15 concurrent evaluations (5 x 3) stay under the quota with room
+// for a council. Raise either number only with a higher provider quota.
+param workerEvaluationCapacity int = 5
+param workerMaxReplicas int = 3
 param workerCouncilCapacity int = 1
 param workerFastCapacity int = 2
 
@@ -274,7 +280,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
       terminationGracePeriodSeconds: 600
       scale: {
         minReplicas: 1
-        maxReplicas: 4
+        maxReplicas: workerMaxReplicas
         rules: workerScaleRuleType == 'metrics-api' ? [evaluationsScaleRule, councilScaleRule] : [redisScaleRule]
       }
       containers: [

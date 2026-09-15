@@ -262,13 +262,25 @@ grace period or timeouts; keep the expand/migrate/contract order for any
 scale-rule contract change; add lane-level monitoring (oldest ready-job age,
 counts, failed/retried jobs, scaler errors, replicas, provider throttling).
 
-Founder-facing follow-ups: (1) the evaluator's reasoning effort is still
-unsent (measured 5× latency lever) and should go through a quality-gated CIL
-replay before promotion (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) add a
-deployment-wide provider funnel if Azure OpenAI 429s appear (pressure above
-about 16 concurrent evaluations on `gpt-6-astra`); (3) a forced kill of an
-in-flight council during scale-in has not been rehearsed; (4) rollback keeps
-the all-lane worker and reverts routing through `BUDDY_QUEUE_*=default`.
+Caveats closed in the fourth session (same day, Buddy design review
+01M2K5N6MJHR4WTHKET2EC1Z8Q; ADR 0014 amendment): the provider cap is
+structural (evaluations 5 per replica × 3 replicas = 15) instead of a job
+funnel; the forced-kill rehearsal ran in the production image (reserved jobs
+survive a SIGKILL, waiting jobs move to the replacement replica, killed jobs
+are redelivered after retry_after, a `Tries(1)` council fails into its
+recovery path by design); `buddy:queue:health` runs every 15 minutes with
+Azure alerts on `BUDDY_QUEUE_DEGRADED`, `KEDAScalerFailed` bursts and worker
+memory; the six PostgreSQL-only suites pass locally against Docker (77 tests);
+the evaluator can now send a reasoning effort (`BUDDY_EVALUATOR_REASONING_EFFORT`,
+proven by an Http::fake assertion) but production keeps it unset; dependencies
+are current (`docs/releases/2026-09-15-dependency-audit.md`, laravel/ai 0.11).
+
+Founder-facing follow-ups: (1) enable the reasoning effort only after a
+quality-gated CIL replay (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) raise the
+15-evaluation cap only with a higher Azure OpenAI quota; (3) the accepted
+`extract-zip` advisory in the Worker package is due for review by 2026-10-15;
+(4) rollback keeps the all-lane worker and reverts routing through
+`BUDDY_QUEUE_*=default`.
 
 ## Resume and finish procedure
 

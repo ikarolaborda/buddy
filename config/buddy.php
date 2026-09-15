@@ -297,6 +297,12 @@ return [
     | capacity change here must change the Bicep scale rule target with it
     | (tests/Feature/QueueLanesTest pins them together).
     |
+    | evaluations x the worker's maxReplicas is the structural provider cap:
+    | Azure OpenAI gpt-6-astra allows 100K tokens per minute and an evaluation
+    | spends about 6K tokens in about a minute, so 5 x 3 = 15 concurrent
+    | evaluations stay under the quota with room for a council. Raise either
+    | number only with a higher provider quota.
+    |
     | 'legacy' is the list the previous worker consumed. It stays consumed so
     | jobs enqueued by an older API revision drain during a rollout, and it is
     | the rollback target: pointing the three lane variables at 'default'
@@ -312,7 +318,7 @@ return [
             'legacy' => env('REDIS_QUEUE', 'default'),
         ],
         'capacity' => [
-            'evaluations' => (int) env('BUDDY_WORKERS_EVALUATIONS', 6),
+            'evaluations' => (int) env('BUDDY_WORKERS_EVALUATIONS', 5),
             'council' => (int) env('BUDDY_WORKERS_COUNCIL', 1),
             'fast' => (int) env('BUDDY_WORKERS_FAST', 2),
             'legacy' => (int) env('BUDDY_WORKERS_LEGACY', 1),

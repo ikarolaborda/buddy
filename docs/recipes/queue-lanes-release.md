@@ -55,6 +55,21 @@ endpoint first (serve both shapes), then deploy workers that consume every
 lane, then switch routing, and remove the old shape only after the rollback
 period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
 
+## Capacity, health job and alerts
+
+- Capacity is `BUDDY_WORKERS_EVALUATIONS` (5) × `maxReplicas` (3) = 15
+  concurrent evaluations, the provider cap (ADR 0014 amendment). Changing
+  either value means the worker template (`--yaml`), `config/buddy.php` and
+  the Bicep defaults together; `tests/Feature/QueueLanesTest` fails on drift.
+- `php artisan buddy:queue:health` (job `caj-buddy-queue-health-<env>`, every
+  15 minutes) logs `BUDDY_QUEUE_DEGRADED`; the alerts module deploys
+  standalone:
+  `az deployment group create -g rg-buddy-<env> --template-file infra/azure/modules/alerts.bicep --parameters environment=<env> alertEmailAddress=<operator> monthlyBudgetAmount=<current> budgetStartDate=<existing budget start> logAnalyticsWorkspaceId=<workspace resource id>`
+  (run with `--what-if` first; the budget start date must match the existing
+  budget or Azure rejects the update).
+- Forced-kill rehearsal: `scratchpad/horizon-kill-rehearsal.sh` pattern,
+  production image, isolated Redis, `REDIS_QUEUE_RETRY_AFTER=30` only there.
+
 ## Release record
 
 ### 2026-09-15 — commits e049394 + 1ac8dad, images `buddy:1ac8dad` / `buddy:1ac8dad-octane`

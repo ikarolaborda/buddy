@@ -69,6 +69,36 @@ The request named Redis, Kafka and RabbitMQ as candidate "harnesses".
    them. A council or a pathological job outlives the grace period and is
    recovered through its lease, which is already the designed path.
 
+## Amendment (2026-09-15, same day, after Buddy review 01M2K5N6MJHR4WTHKET2EC1Z8Q)
+
+- **Structural provider cap instead of a job funnel.** A blocking Redis
+  funnel on the evaluation job was rejected: a limiter wait occupies a worker
+  slot, every release consumes one of the job's three attempts, and the
+  council would sit outside the cap. The cap is structural: evaluations
+  capacity 5 per replica × worker `maxReplicas` 3 = 15 concurrent
+  evaluations, about 90K tokens per minute against the 100K quota, leaving
+  room for a council. Both numbers live in Bicep and `config/buddy.php` and
+  are pinned together by tests.
+- **Shutdown rehearsed.** In the production image with an isolated Redis
+  (retry_after shortened to 30 s only there): SIGKILL of a worker holding 6
+  evaluation and 1 council synthetic jobs left every reserved entry in Redis;
+  a replacement worker picked up the waiting jobs within 10 s; after
+  retry_after the killed jobs were redelivered. A redelivered job with
+  `Tries(1)` (the council) is failed on arrival, which triggers its `failed()`
+  path and the supervision recovery rather than a silent re-run (ADR 0009);
+  `EvaluateTaskJob` (`Tries(3)`) re-executes behind its PostgreSQL claim.
+- **Lane-level health.** `buddy:queue:health` runs every fifteen minutes
+  (`caj-buddy-queue-health`) and logs `BUDDY_QUEUE_DEGRADED` when an accepted
+  task has waited more than 300 s or more than three evaluations failed in
+  the last hour; Azure alerts fire on that marker, on `KEDAScalerFailed`
+  bursts and on worker memory above 85%. The scaling endpoint now also
+  reports `waiting` per operation from PostgreSQL.
+- **Reasoning effort is now sendable but unset.** `EvaluatorOptimizerAgent`
+  implements `HasProviderOptions`; `BUDDY_EVALUATOR_REASONING_EFFORT`
+  (low, medium, high) reaches the Responses API body, proven by an
+  `Http::fake` assertion, and an unset value leaves the request untouched.
+  Enabling it in production waits for a CIL replay of recommendation quality.
+
 ## Consequences
 
 - Concurrency per replica rises from 1 to 6 evaluations plus 1 council plus

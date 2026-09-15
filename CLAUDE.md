@@ -60,6 +60,7 @@ Do not reset a database or replace an archive without explicit authorization for
 - `php artisan buddy:outbox-replay --dry-run` — List or replay remote (Cloudflare) outbox deliveries; `--list-quarantined` shows rejected unknown topics
 - `php artisan buddy:queue:synthetic --count=30 --seconds=90 --lane=evaluations --confirm` — Bounded no-inference backlog on one lane for autoscaling proofs (P0, ADR 0014)
 - `php artisan buddy:queue:report --since=24h` — Queue wait, runtime, failures and max concurrency per window (`--json` for machines)
+- `php artisan buddy:queue:health` — Lane health check run every 15 minutes in Azure; logs `BUDDY_QUEUE_DEGRADED` for the alert
 - `php artisan horizon` — The production worker command: one fixed-size Horizon supervisor per queue lane (ADR 0014)
 - `php artisan buddy:artifacts:cleanup --dry-run` — Expire abandoned uploads, release quota, purge past retention (P5)
 - `php artisan buddy:cil-report` — Report-only Controlled Improvement Loop metrics

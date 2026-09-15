@@ -12,8 +12,12 @@ param environment string
 param alertEmailAddress string
 param monthlyBudgetAmount int = 100
 param budgetStartDate string = utcNow('yyyy-MM-01')
+// Log Analytics workspace for the scheduled-query alerts; empty skips them.
+param logAnalyticsWorkspaceId string = ''
+param workerMemoryPercentThreshold int = 85
 
 var apiAppName = 'ca-buddy-api-${environment}'
+var workerAppName = 'ca-buddy-worker-${environment}'
 var monitoredApps = [
   apiAppName
   'ca-buddy-worker-${environment}'
@@ -143,6 +147,104 @@ resource budget 'Microsoft.Consumption/budgets@2025-04-01' = {
         thresholdType: 'Forecasted'
         contactEmails: [alertEmailAddress]
       }
+    }
+  }
+}
+
+// Queue harness (ADR 0014). Memory uses the Maximum aggregation so one
+// replica near its 2 GiB limit fires even when the others are idle.
+resource workerMemory 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-${workerAppName}-memory'
+  location: 'global'
+  properties: {
+    description: 'A Buddy worker replica is close to its memory limit'
+    severity: 2
+    enabled: true
+    scopes: [
+      resourceId('Microsoft.App/containerApps', workerAppName)
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [
+        {
+          criterionType: 'StaticThresholdCriterion'
+          name: 'memory-percent'
+          metricName: 'MemoryPercentage'
+          dimensions: []
+          operator: 'GreaterThan'
+          threshold: workerMemoryPercentThreshold
+          timeAggregation: 'Maximum'
+        }
+      ]
+    }
+    actions: [
+      {
+        actionGroupId: actionGroup.id
+      }
+    ]
+  }
+}
+
+// The worker's KEDA rules poll the API; repeated failures mean the worker
+// can no longer scale out (ADR 0012, ADR 0014). One failure per poll during a
+// revision switch is expected, so the threshold tolerates a short window.
+resource scalerFailures 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (logAnalyticsWorkspaceId != '') {
+  name: 'alert-${workerAppName}-scaler-failed'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'Buddy worker scaler failing (${environment})'
+    description: 'KEDA could not read the queue-depth endpoint for the worker'
+    severity: 2
+    enabled: true
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
+    scopes: [logAnalyticsWorkspaceId]
+    autoMitigate: true
+    criteria: {
+      allOf: [
+        {
+          query: 'ContainerAppSystemLogs_CL | where ContainerAppName_s == "${workerAppName}" and Reason_s == "KEDAScalerFailed"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 6
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [actionGroup.id]
+    }
+  }
+}
+
+// Lane-level signal: buddy:queue:health (caj-buddy-queue-health) runs every
+// fifteen minutes and logs BUDDY_QUEUE_DEGRADED when a task has waited too
+// long for a worker or evaluations keep failing.
+resource queueDegraded 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (logAnalyticsWorkspaceId != '') {
+  name: 'alert-buddy-queue-degraded-${environment}'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'Buddy queue degraded (${environment})'
+    description: 'buddy:queue:health reported BUDDY_QUEUE_DEGRADED'
+    severity: 2
+    enabled: true
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT30M'
+    scopes: [logAnalyticsWorkspaceId]
+    autoMitigate: true
+    criteria: {
+      allOf: [
+        {
+          query: 'ContainerAppConsoleLogs_CL | where Log_s contains "BUDDY_QUEUE_DEGRADED"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [actionGroup.id]
     }
   }
 }

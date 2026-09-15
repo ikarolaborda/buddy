@@ -72,9 +72,11 @@ param workerScaleRuleType string = 'redis'
 param scalingMetricsUrl string = ''
 
 @description('Jobs one worker replica runs at once per lane (ADR 0014); mirrors config/buddy.php queues.capacity.')
-param workerEvaluationCapacity int = 6
+param workerEvaluationCapacity int = 5
 param workerCouncilCapacity int = 1
 param workerFastCapacity int = 2
+@description('Worker replica ceiling; evaluations capacity x replicas is the provider concurrency cap (ADR 0014).')
+param workerMaxReplicas int = 3
 
 @description('Cloudflare edge wiring: identifiers only. Secrets are Key Vault references enabled by deployEdgeSecrets.')
 param edgeWorkerUrl string = ''
@@ -236,6 +238,7 @@ module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployB
     workerEvaluationCapacity: workerEvaluationCapacity
     workerCouncilCapacity: workerCouncilCapacity
     workerFastCapacity: workerFastCapacity
+    workerMaxReplicas: workerMaxReplicas
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
     azureOpenAiUrl: azureOpenAiUrl
     azureOpenAiDeployment: azureOpenAiDeployment
@@ -279,6 +282,7 @@ module alerts 'modules/alerts.bicep' = if (deployWorkloads && deployBackgroundWo
     environment: environment
     alertEmailAddress: alertEmailAddress
     monthlyBudgetAmount: monthlyBudgetAmount
+    logAnalyticsWorkspaceId: observability.outputs.logAnalyticsWorkspaceId
   }
   dependsOn: [
     buddyApi

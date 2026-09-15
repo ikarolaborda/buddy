@@ -303,4 +303,54 @@ resource artifactsCleanupJob 'Microsoft.App/jobs@2024-03-01' = if (deployOutboxR
   }
 }
 
+
+resource queueHealthJob 'Microsoft.App/jobs@2024-03-01' = if (deployOutboxRepair) {
+  name: 'caj-buddy-queue-health-${environment}'
+  location: location
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${identity.id}': {}
+    }
+  }
+  dependsOn: [
+    vaultRole
+    acrPullRole
+  ]
+  properties: {
+    environmentId: containerAppsEnvironmentId
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 120
+      replicaRetryLimit: 1
+      scheduleTriggerConfig: {
+        cronExpression: '*/15 * * * *'
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+      registries: [
+        {
+          server: acrLoginServer
+          identity: identity.id
+        }
+      ]
+      secrets: concat(edgeJobSecrets, edgeProvisionedSecrets)
+    }
+    template: {
+      containers: [
+        {
+          name: 'queue-health'
+          image: '${acrLoginServer}/buddy:${imageTag}'
+          command: ['php', 'artisan', 'buddy:queue:health']
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: concat(commonEnv, edgeProvisionedEnv)
+        }
+      ]
+    }
+  }
+}
+
 output principalId string = identity.properties.principalId

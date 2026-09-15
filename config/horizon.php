@@ -41,7 +41,7 @@ $supervisor = fn (string $lane, int $processes, int $timeout, int $sleep = 1) =>
 ];
 
 $supervisors = [
-    'evaluations' => $supervisor('evaluations', (int) env('BUDDY_WORKERS_EVALUATIONS', 6), (int) env('BUDDY_JOB_TIMEOUT', 600) + 60),
+    'evaluations' => $supervisor('evaluations', (int) env('BUDDY_WORKERS_EVALUATIONS', 5), (int) env('BUDDY_JOB_TIMEOUT', 600) + 60),
     'council' => $supervisor('council', (int) env('BUDDY_WORKERS_COUNCIL', 1), (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 1800) + 60, 3),
     'fast' => $supervisor('fast', (int) env('BUDDY_WORKERS_FAST', 2), 150),
     'legacy' => $supervisor('legacy', (int) env('BUDDY_WORKERS_LEGACY', 1), (int) env('BUDDY_COUNCIL_JOB_TIMEOUT', 1800) + 60),
