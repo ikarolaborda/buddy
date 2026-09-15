@@ -2,10 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Enums\RunStatus;
+use App\Enums\TaskStatus;
 use App\Models\BuddyRun;
 use App\Models\BuddyTask;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\TaskStateService;
+use App\Support\ErrorClassifier;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -112,5 +115,23 @@ class CouncilDeliberateJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
     public function tags(): array
     {
         return ['buddy_council:'.$this->task->ulid];
+    }
+
+    public function failed(?\Throwable $error): void
+    {
+        $task = $this->task->fresh();
+        if ($task === null || $task->operation !== 'council' || $task->isTerminal()) {
+            return;
+        }
+
+        $task->runs()->where('run_type', 'council')->where('status', RunStatus::Started->value)->update([
+            'status' => RunStatus::Failed->value,
+            'error_class' => $error ? $error::class : null,
+            'error_category' => $error ? ErrorClassifier::classify($error)->value : 'transient',
+            'completed_at' => now(),
+        ]);
+        if ($task->status === TaskStatus::Evaluating) {
+            app(TaskStateService::class)->transition($task, TaskStatus::Failed);
+        }
     }
 }

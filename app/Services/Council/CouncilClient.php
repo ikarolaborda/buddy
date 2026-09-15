@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /*
- * Direct OpenRouter chat-completions client. Bypasses laravel/ai
+ * Council transport: OpenRouter chat completions and Azure background Responses.
+ * Uses direct HTTP instead of laravel/ai
  * deliberately (ADR 0009): the council needs reasoning_effort
  * passthrough, response_format control, Http::pool concurrency, and
  * per-call usage capture. json_object mode plus a prompt-embedded
@@ -44,7 +45,7 @@ class CouncilClient
         $response = null;
 
         try {
-            $response = $this->request()->post('/chat/completions', $this->payload($member, $system, $user));
+            $response = $this->send($this->payload($member, $system, $user));
         } catch (\Throwable $e) {
             return ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
         }
@@ -61,11 +62,12 @@ class CouncilClient
      */
     public function askAll(array $members, string $system, callable $userPromptFor): array
     {
+        $deadline = microtime(true) + (int) $this->setting('call_timeout', 420);
         $responses = Http::pool(function (Pool $pool) use ($members, $system, $userPromptFor) {
             foreach ($members as $member) {
                 $this->configure($pool->as($member['key']))
                     ->post(
-                        rtrim($this->baseUrl(), '/').'/chat/completions',
+                        rtrim($this->baseUrl(), '/').$this->endpoint(),
                         $this->payload($member, $system, $userPromptFor($member)),
                     );
             }
@@ -86,7 +88,11 @@ class CouncilClient
                 continue;
             }
 
-            $results[$member['key']] = $this->interpret($member, $system, $userPromptFor($member), $slot);
+            try {
+                $results[$member['key']] = $this->interpret($member, $system, $userPromptFor($member), $this->finish($slot, $deadline));
+            } catch (\Throwable $e) {
+                $results[$member['key']] = ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
+            }
         }
 
         return $results;
@@ -106,7 +112,7 @@ class CouncilClient
             // recovers a member that was never actually unaffordable.
             if ($this->settlingWouldHelp($response)) {
                 try {
-                    $response = $this->request()->post('/chat/completions', $this->payload($member, $system, $user));
+                    $response = $this->send($this->payload($member, $system, $user));
                 } catch (\Throwable $e) {
                     return ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
                 }
@@ -145,7 +151,7 @@ class CouncilClient
         $reasoningSpent = $usage['reasoning_tokens'];
 
         try {
-            $retry = $this->request()->post('/chat/completions', $this->payload(
+            $retry = $this->send($this->payload(
                 $member,
                 $system,
                 $truncated
@@ -201,7 +207,40 @@ class CouncilClient
             $payload['reasoning_effort'] = $effort;
         }
 
+        if ($this->setting('profile') === 'azure') {
+            return [
+                'model' => $member['model'],
+                'input' => $payload['messages'],
+                'text' => ['format' => ['type' => 'json_object']],
+                'max_output_tokens' => (int) $this->setting('max_output_tokens', 24000),
+                'reasoning' => ['effort' => $effort ?? 'high'],
+                'background' => true,
+                'store' => true,
+            ];
+        }
+
         return $payload;
+    }
+
+    protected function endpoint(): string
+    {
+        return $this->setting('profile') === 'azure' ? '/responses' : '/chat/completions';
+    }
+
+    protected function send(array $payload): Response
+    {
+        $deadline = microtime(true) + (int) $this->setting('call_timeout', 420);
+
+        return $this->finish($this->request()->post($this->endpoint(), $payload), $deadline);
+    }
+
+    protected function finish(Response $response, float $deadline): Response
+    {
+        if ($this->setting('profile') !== 'azure') {
+            return $response;
+        }
+
+        return (new AzureBackgroundResponse)->await($response, fn () => $this->request(), $deadline);
     }
 
     /**
@@ -242,7 +281,7 @@ class CouncilClient
                 (array) $this->setting('headers', []),
                 [$authHeader => $authHeader === 'Authorization' ? 'Bearer '.$secret : $secret],
             ))
-            ->timeout((int) $this->setting('call_timeout', 420))
+            ->timeout($this->setting('profile') === 'azure' ? 60 : (int) $this->setting('call_timeout', 420))
             ->connectTimeout(10)
             ->retry(1, 2000, fn ($e, $req) => $e instanceof ConnectionException, false)
             ->asJson();

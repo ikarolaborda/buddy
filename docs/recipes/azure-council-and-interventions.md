@@ -1,9 +1,10 @@
 # Azure council and operational interventions
 
-The default council remains OpenRouter. Supply `profile: "azure"` to
-`buddy.council_evaluate` or `POST /api/buddy/tasks/{task_id}/council` to select
-the Azure backup for that task. `BUDDY_COUNCIL_PROFILE=azure` makes Azure the
-default. Selection is explicit; a provider refusal does not cause a provider switch.
+Azure production uses `BUDDY_COUNCIL_PROFILE=azure` as its default council.
+Supply `profile: "azure"` to `buddy.council_evaluate` or
+`POST /api/buddy/tasks/{task_id}/council` to select it explicitly on other
+deployments. OpenRouter remains an available profile when its key is configured.
+Selection is explicit; a provider refusal does not cause a provider switch.
 
 The Azure roster uses the models allowed by the Aerolambda subscription:
 
@@ -23,8 +24,20 @@ Set `AZURE_OPENAI_URL` to the resource root, such as
 `https://resource.openai.azure.com`, and configure `AZURE_OPENAI_API_KEY` through
 the deployment's secret store (the ignored `.env` for local development).
 Optional `BUDDY_COUNCIL_AZURE_CHAIRMAN` and `BUDDY_COUNCIL_AZURE_REVIEWER` override
-deployment names. The client uses Azure's `/openai/v1/chat/completions`, `api-key`,
-and `max_completion_tokens`. OpenRouter credentials and headers stay with OpenRouter.
+deployment names. The client uses Azure's `/openai/v1/responses`, `api-key`,
+and `max_output_tokens`. OpenRouter credentials and headers stay with OpenRouter.
+
+Azure requests use [background mode](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/responses#background-tasks).
+A synchronous Astra `xhigh` council request was reset after about 248 seconds
+during the production canary. Background mode starts one generation and polls
+its response ID, so a dropped polling connection does not restart inference.
+Reviewers start in parallel. Background mode requires `store=true`; the client
+deletes the response after retrieval and attempts cancellation and deletion on
+timeout. Cleanup failures are logged. Astra keeps `xhigh` throughout.
+
+Allocate enough Azure quota for parallel reviewers and their output budgets.
+The production GPT-5.5 deployment has 200,000 tokens per minute; its earlier
+10,000-token allocation was below the council's per-request output budget.
 
 Run `php artisan migrate`, then restart application and queue processes.
 `php artisan buddy:council-probe azure` makes one live JSON request per seat,

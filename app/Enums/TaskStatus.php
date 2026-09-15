@@ -21,7 +21,8 @@ enum TaskStatus: string
             self::Pending => [self::Evaluating, self::Closed],
             self::Evaluating => [self::Completed, self::Failed],
             self::Completed => [self::Closed],
-            self::Failed, self::Closed => [],
+            self::Failed => [self::Closed],
+            self::Closed => [],
         }, true);
     }
 }

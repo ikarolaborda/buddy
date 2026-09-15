@@ -37,12 +37,12 @@ class AzureCouncilTest extends TestCase
 
     private function reply(array $json): array
     {
-        return ['choices' => [['message' => ['content' => json_encode($json)], 'finish_reason' => 'stop']], 'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 20]];
+        return ['status' => 'completed', 'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode($json)]]]], 'usage' => ['input_tokens' => 10, 'output_tokens' => 20]];
     }
 
     public function test_azure_transport_is_isolated_in_serial_and_parallel_calls(): void
     {
-        Http::fake(['*' => Http::response($this->reply(['ok' => true]))]);
+        Http::fake(['azure.example/*' => Http::response($this->reply(['ok' => true])), 'openrouter.ai/*' => Http::response(['choices' => [['message' => ['content' => '{"ok":true}'], 'finish_reason' => 'stop']]])]);
         $profile = CouncilProfile::resolve('azure');
         $client = (new CouncilClient)->forProfile('azure');
         $client->ask($profile['chairman'], 'Return JSON.', 'test');
@@ -52,14 +52,14 @@ class AzureCouncilTest extends TestCase
         $requests = Http::recorded()->pluck(0);
         $this->assertCount(5, $requests);
         foreach ($requests->take(4) as $request) {
-            $this->assertSame('https://azure.example/openai/v1/chat/completions', $request->url());
+            $this->assertSame('https://azure.example/openai/v1/responses', $request->url());
             $this->assertSame(['AZURE-SECRET'], $request->header('api-key'));
             $this->assertEmpty($request->header('Authorization'));
             $this->assertEmpty($request->header('HTTP-Referer'));
-            $this->assertSame(24000, $request['max_completion_tokens']);
+            $this->assertSame(24000, $request['max_output_tokens']);
             $this->assertArrayNotHasKey('max_tokens', $request->data());
         }
-        $this->assertSame('xhigh', $requests[0]['reasoning_effort']);
+        $this->assertSame('xhigh', $requests[0]['reasoning']['effort']);
         $this->assertSame('gpt-6-astra', $requests[0]['model']);
         $this->assertSame(['gpt-5.5'], $requests->slice(1, 3)->map(fn ($r) => $r['model'])->unique()->values()->all());
         $this->assertSame(['Bearer ROUTER-SECRET'], $requests[4]->header('Authorization'));
@@ -70,19 +70,19 @@ class AzureCouncilTest extends TestCase
     public function test_azure_chair_keeps_xhigh_on_json_repair(): void
     {
         Http::fake(['*' => Http::sequence()
-            ->push(['choices' => [['message' => ['content' => '{'], 'finish_reason' => 'length']]])
+            ->push(['status' => 'incomplete', 'incomplete_details' => ['reason' => 'max_output_tokens'], 'output' => [['content' => [['type' => 'output_text', 'text' => '{']]]]])
             ->push($this->reply(['ok' => true]))]);
         $client = (new CouncilClient)->forProfile('azure');
         $result = $client->ask(CouncilProfile::resolve('azure')['chairman'], 'Return JSON.', 'test');
         $this->assertTrue($result['json']['ok']);
         foreach (Http::recorded() as [$request]) {
-            $this->assertSame('xhigh', $request['reasoning_effort']);
+            $this->assertSame('xhigh', $request['reasoning']['effort']);
         }
     }
 
     public function test_explicit_provider_refusal_is_not_reasked(): void
     {
-        Http::fake(['*' => Http::response(['choices' => [['message' => ['refusal' => 'restricted'], 'finish_reason' => 'stop']]])]);
+        Http::fake(['*' => Http::response(['status' => 'completed', 'output' => [['content' => [['type' => 'refusal', 'refusal' => 'restricted']]]]])]);
         $result = (new CouncilClient)->forProfile('azure')->ask(CouncilProfile::resolve('azure')['chairman'], 's', 'u');
         $this->assertSame('provider_refusal', $result['error']);
         Http::assertSentCount(1);
@@ -94,12 +94,13 @@ class AzureCouncilTest extends TestCase
     {
         $repair = $this->reply(['ok' => true]);
         if ($kind === 'refusal') {
-            $repair['choices'][0]['message']['refusal'] = 'restricted';
+            $repair['output'][0]['content'][] = ['type' => 'refusal', 'refusal' => 'restricted'];
         } else {
-            $repair['choices'][0]['finish_reason'] = 'content_filter';
+            $repair['status'] = 'incomplete';
+            $repair['incomplete_details'] = ['reason' => 'content_filter'];
         }
         Http::fake(['*' => Http::sequence()
-            ->push(['choices' => [['message' => ['content' => '{'], 'finish_reason' => 'stop']], 'usage' => ['prompt_tokens' => 1]])
+            ->push(['status' => 'completed', 'output' => [['content' => [['type' => 'output_text', 'text' => '{']]]], 'usage' => ['input_tokens' => 1]])
             ->push($repair)]);
         $result = (new CouncilClient)->forProfile('azure')->ask(CouncilProfile::resolve('azure')['chairman'], 's', 'u');
         $this->assertSame('provider_refusal', $result['error']);

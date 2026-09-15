@@ -106,7 +106,7 @@ $councilProfiles = [
         'base_url' => rtrim((string) env('AZURE_OPENAI_URL', ''), '/').'/openai/v1',
         'credential' => 'ai.providers.azure.key',
         'auth_header' => 'api-key',
-        'token_parameter' => 'max_completion_tokens',
+        'token_parameter' => 'max_output_tokens',
         'headers' => [],
         'chairman' => ['key' => 'chairman', 'model' => env('BUDDY_COUNCIL_AZURE_CHAIRMAN', 'gpt-6-astra'), 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
         'members' => [

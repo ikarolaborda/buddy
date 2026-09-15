@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\DTOs\MemorySearchPage;
 use App\Enums\ApiScope;
+use App\Enums\TaskOutcome;
 use App\Enums\TaskStatus;
 use App\Jobs\CouncilDeliberateJob;
 use App\Models\ApiClient;
@@ -419,5 +420,27 @@ class CouncilTest extends TestCase
 
         $this->assertSame(1, $reaped);
         $this->assertSame(TaskStatus::Failed, $task->refresh()->status);
+    }
+
+    public function test_exhausted_council_failure_does_not_leave_task_evaluating(): void
+    {
+        $task = BuddyTask::factory()->create(['operation' => 'council', 'status' => TaskStatus::Evaluating]);
+        $run = $task->runs()->create(['run_number' => 1, 'run_type' => 'council', 'status' => 'started']);
+
+        (new CouncilDeliberateJob($task))->failed(new \RuntimeException('Connection reset by peer'));
+
+        $this->assertSame(TaskStatus::Failed, $task->refresh()->status);
+        $this->assertSame('failed', $run->refresh()->status->value);
+        $this->assertSame('transient', $run->error_category);
+        $this->assertNotNull($run->completed_at);
+        $this->assertNull($task->lease_expires_at);
+    }
+
+    public function test_failed_council_can_be_closed_with_an_outcome(): void
+    {
+        $task = BuddyTask::factory()->create(['operation' => 'council', 'status' => TaskStatus::Failed]);
+        app(EvaluatorOptimizerService::class)->closeTask($task, outcome: TaskOutcome::Abandoned, notes: 'Failed canary retained for audit.');
+        $this->assertSame(TaskStatus::Closed, $task->refresh()->status);
+        $this->assertDatabaseHas('task_feedback', ['buddy_task_id' => $task->id, 'outcome' => 'abandoned']);
     }
 }
