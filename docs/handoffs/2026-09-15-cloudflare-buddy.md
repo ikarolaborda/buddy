@@ -219,6 +219,13 @@ The user asked for no dark deploy, so the edge is live. Commits `e60e8b1` (credi
 | Verification client | `edge-verifier` (client #12), key expires 2026-09-22; revoke earlier with `ApiKeyService::revoke` if unwanted |
 | Still off | `BUDDY_EDGE_BROWSER_DIAGNOSTICS`: Browser Run is not in the startup credit coverage list; the Workers Paid plan includes 10 browser hours per month and the pilot quota needs about 2.5, so enabling it costs nothing extra but is a billing decision the founder must take (docs/releases/2026-09-15-ai-model-credit-coverage.md) |
 
+### Day-two checks (from the final review, buddy task 01M2K17TPDNP7V63F4Z2M3JNY9)
+
+1. Deployment drift and negative probes: confirm the Azure revisions (`flags-230c030`), Worker versions and non-secret flag values; run wrong-key, wrong-environment, expired-token, relabelled-token and oversized-upload probes only against a disposable reservation on a throwaway task; assert rejection without mutation.
+2. Overnight delivery correctness: `buddy:outbox-replay --dry-run` via a one-off job execution for pending or failed remote deliveries, queue backlog and DLQ depth (`wrangler queues list`), Worker budget counters (`/internal/budget`, two units per event by design), supervisor instances; run one tagged canary task end to end.
+3. Spend and artifact integrity: compare Cloudflare and Azure usage with the counters and the credit terms in the coverage report; check outstanding reservations and staging bytes (`buddy:artifacts:cleanup --dry-run`).
+Follow-up recorded: split the single shared edge key into separate event, object and token-signing credentials with overlapping rotation.
+
 ### Cloudflare preview
 
 Preview resources exist alongside production (table above); `buddy-edge-preview` passes the same fourteen-check smoke test as production and is the place to try Worker changes before `wrangler deploy --env production`.
