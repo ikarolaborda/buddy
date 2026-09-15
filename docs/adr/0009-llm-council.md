@@ -82,3 +82,25 @@ default path. Kill switch `BUDDY_COUNCIL_GATE=false`.
   false certainty.
 - A second provider dependency (OpenRouter) exists only when a council is
   explicitly convened; the evaluate/refine paths are untouched.
+
+## Amendment 2026-09-15: strict schema output for the Azure chairman
+
+The chairman is the one seat whose unusable JSON discards every prior council
+call (`CouncilService` throws on a failed frame or verdict). On the Azure
+profile the chair's frame and verdict calls can now request
+`text.format = json_schema` with `strict: true` (`CouncilSchemas::frame()`,
+`CouncilSchemas::verdict()`), derived from the prompt contracts and from what
+`normalizeHypotheses` and `assembleVerdict` read: every object requires all
+properties and forbids extras, arrays may be empty, `confidence` is the
+`high|medium|low|none` enum, and non-empty hypotheses stay a local check.
+Members keep `json_object` because their failures degrade instead of
+aborting; the OpenRouter and Workers AI profiles keep the portable
+prompt-embedded schema for the reasons recorded above. The mode is opt-in
+(`BUDDY_COUNCIL_AZURE_STRICT_CHAIR`), survives the truncation re-ask, and a
+schema rejection fails the call without a blind retry. Evidence before
+enabling: production history showed no chair JSON failures (the benefit is
+preventive), and a background-mode probe of `gpt-6-astra` with the frame
+schema completed with exactly the expected shape. Each chair call logs
+`Council chair request` with its phase and format so a production run can
+prove which mode was used.
+

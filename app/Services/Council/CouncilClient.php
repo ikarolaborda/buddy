@@ -23,6 +23,11 @@ class CouncilClient
 {
     protected ?array $profile = null;
 
+    /** @var array<string, mixed>|null */
+    protected ?array $schema = null;
+
+    protected ?string $phase = null;
+
     public function forProfile(?string $name): static
     {
         $client = clone $this;
@@ -37,15 +42,22 @@ class CouncilClient
     }
 
     /**
+     * A schema turns the call into a strict-output request on the Azure
+     * profile (chair calls only, see azureTextFormat); the clone keeps it out
+     * of any other call made through this instance.
+     *
      * @param  array<string, mixed>  $member  config row (model, reasoning_effort?)
+     * @param  array<string, mixed>|null  $schema
      * @return array{json: array<string, mixed>|null, usage: array<string, int>, error: string|null}
      */
-    public function ask(array $member, string $system, string $user): array
+    public function ask(array $member, string $system, string $user, ?array $schema = null, ?string $phase = null): array
     {
         $response = null;
 
         try {
-            $client = $this->forMember($member);
+            $client = clone $this->forMember($member);
+            $client->schema = $schema;
+            $client->phase = $phase;
             $response = $client->send($client->payload($member, $system, $user));
         } catch (\Throwable $e) {
             return ['json' => null, 'usage' => [], 'error' => $e->getMessage()];
@@ -226,7 +238,7 @@ class CouncilClient
             return [
                 'model' => $member['model'],
                 'input' => $payload['messages'],
-                'text' => ['format' => ['type' => 'json_object']],
+                'text' => ['format' => $this->azureTextFormat()],
                 'max_output_tokens' => (int) $this->setting('max_output_tokens', 24000),
                 'reasoning' => ['effort' => $effort ?? 'high'],
                 'background' => true,
@@ -235,6 +247,36 @@ class CouncilClient
         }
 
         return $payload;
+    }
+
+    /**
+     * Strict schema output is opt-in (BUDDY_COUNCIL_AZURE_STRICT_CHAIR) and
+     * reaches only chair calls on Azure: members keep json_object because
+     * their failures degrade rather than abort, and the other profiles keep
+     * the portable prompt-embedded schema (ADR 0009 amendment 2026-09-15).
+     * The format is logged per chair call so a production run can prove
+     * which mode the chair actually used.
+     *
+     * @return array<string, mixed>
+     */
+    protected function azureTextFormat(): array
+    {
+        $strict = $this->schema !== null && (bool) $this->setting('strict_chair', false);
+
+        if ($this->phase !== null) {
+            Log::info('Council chair request', ['phase' => $this->phase, 'format' => $strict ? 'json_schema' : 'json_object']);
+        }
+
+        if (! $strict) {
+            return ['type' => 'json_object'];
+        }
+
+        return [
+            'type' => 'json_schema',
+            'name' => 'council_'.($this->phase ?? 'output'),
+            'strict' => true,
+            'schema' => $this->schema,
+        ];
     }
 
     protected function endpoint(): string

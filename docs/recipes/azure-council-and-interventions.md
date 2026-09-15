@@ -126,6 +126,19 @@ The earlier token allowed only the local IP address. The startup grant had
 $9,999.65 remaining and expires on August 11, 2027. Cloudflare authentication
 does not establish model suitability: the subsequent full GLM-5.3 probe timed out.
 
+## Strict chairman output (Azure)
+
+`BUDDY_COUNCIL_AZURE_STRICT_CHAIR=true` makes the Azure chairman's frame and
+verdict calls strict `json_schema` requests (ADR 0009 amendment 2026-09-15);
+members and other profiles are unaffected. The worker reads the switch at
+container start (configuration is cached there), so changing it means a new
+worker revision: `az containerapp update -n ca-buddy-worker-credit
+--set-env-vars BUDDY_COUNCIL_AZURE_STRICT_CHAIR=false` is the rollback and
+needs no image. A council already running keeps its old replica for up to the
+600 s grace period and finishes on the old setting. Proof of the mode in
+production: `ContainerAppConsoleLogs_CL | where Log_s contains "Council chair
+request"` shows `phase` and `format` per chair call.
+
 ## Sol in the Workers AI council
 
 Set `BUDDY_COUNCIL_WORKERS_AI_SOL=true` and configure `OPENROUTER_API_KEY`

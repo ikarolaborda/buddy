@@ -248,6 +248,16 @@ return [
         'artifact_chars' => (int) env('BUDDY_COUNCIL_ARTIFACT_CHARS', 16000),
         'packet_chars' => (int) env('BUDDY_COUNCIL_PACKET_CHARS', 160000),
         'max_output_tokens' => (int) env('BUDDY_COUNCIL_MAX_OUTPUT_TOKENS', 24000),
+        /*
+         * Strict json_schema output for the Azure chairman's frame and verdict
+         * calls (CouncilSchemas). The chair is the one seat whose bad JSON
+         * throws away every prior council call; strict mode makes the shape a
+         * provider guarantee instead of a parser repair. Opt-in: production
+         * enables it after a real council run proved the mode on gpt-6-astra
+         * in background mode (2026-09-15). Members and other profiles are
+         * untouched.
+         */
+        'strict_chair' => (bool) env('BUDDY_COUNCIL_AZURE_STRICT_CHAIR', false),
         'min_positions' => 3,
         'chairman' => $activeCouncil['chairman'],
         'members' => $activeCouncil['members'],

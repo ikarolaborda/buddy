@@ -61,7 +61,7 @@ class CouncilService
         ]);
 
         // R0: chairman frames hypotheses with kill conditions.
-        $frame = $client->ask($chairman, $this->framingSystem(), $this->framingPrompt($packet));
+        $frame = $client->ask($chairman, $this->framingSystem(), $this->framingPrompt($packet), CouncilSchemas::frame(), 'frame');
         $this->tally($usage, $frame['usage']);
 
         if ($frame['json'] === null) {
@@ -130,6 +130,8 @@ class CouncilService
             $chairman,
             $this->verdictSystem(),
             $this->verdictPrompt($packet, $hypotheses, $tally),
+            CouncilSchemas::verdict(),
+            'verdict',
         );
         $this->tally($usage, $verdictReply['usage']);
 
