@@ -23,6 +23,8 @@ truth for every task; this Worker never writes task state.
 | `src/cache.ts` | KV summary cache with authorization first (`summary:v1:<client>:<artifact>:<hash>:<processor>`) |
 | `src/captures.ts`, `src/captures/*` | Browser diagnostics: policy enforced before navigation, `CaptureRunner` interface, puppeteer runner, mock runner |
 | `src/azure.ts` | Client for the `/api/internal/cloudflare/*` contract (`X-Buddy-Edge-Key`, `X-Buddy-Edge-Session`) |
+| `src/ingest.ts` | `POST /internal/events`: Azure publishes envelopes through the Worker instead of the Queues REST API |
+| `src/objects.ts` | Signed upload/download tokens (`bup1`/`bdl1`), the public `/uploads` and `/downloads` routes, and the internal R2 object API |
 | `public/` | Single-task dashboard (plain HTML/CSS/JS, no inline handlers, no external assets) |
 | `test/` | Vitest suites that run inside the Workers runtime |
 | `wrangler.jsonc` | Two environments: `preview` (`buddy-edge-preview`) and `production` (`buddy-edge-prod`) |
@@ -122,7 +124,33 @@ Secrets are never written to `wrangler.jsonc`, `.dev.vars` is git-ignored, and n
 | `GET /tasks/:task/artifacts/:artifact/summary` | Session cookie | Origin or cache (`X-Buddy-Cache: origin|cache`) |
 | `POST /internal/captures` | `X-Buddy-Edge-Key` | Browser diagnostics, gated by flag, policy, budget and concurrency |
 | `GET /internal/budget` | `X-Buddy-Edge-Key` | Counter and reconciliation read |
+| `POST /internal/events` | `X-Buddy-Edge-Key` | Body is one event envelope (not wrapped). `422 invalid_envelope`, `429 budget_exhausted` (terminal events always pass), `202 {queued, event_id}`. `buddy.task.artifact.*` goes to `BUDDY_ARTIFACT_EVENTS`, everything else to `BUDDY_EVENTS` |
+| `PUT /uploads/:token` | `bup1` token | Streams the body into R2 under the token's key with its `content_type` and `upload_id` metadata. `413 upload_too_large` from `Content-Length` or once the counted stream passes `max_bytes`. `201 {key, size, etag}` |
+| `GET /downloads/:token` | `bdl1` token | Streams the object with the token's `content_type` (never the stored one), `Content-Disposition: attachment; filename="<sanitized>"`, `Cache-Control: no-store`. `404 not_found` |
+| `GET /internal/objects/meta?key=` | `X-Buddy-Edge-Key` | `200 {size, content_type, etag}` or `404` |
+| `GET /internal/objects/content?key=` | `X-Buddy-Edge-Key` | Streams the bytes with the stored content type, `404` when missing |
+| `POST /internal/objects/copy` | `X-Buddy-Edge-Key` | Body `{from, to}`; server-side copy keeping metadata, `200 {size}`, `404` when `from` is missing |
+| `DELETE /internal/objects?key=` | `X-Buddy-Edge-Key` | Always `204` |
 | everything else | – | Static assets (`public/`) |
+
+Every object key on these routes must start with `clients/` (`400 key_invalid` otherwise). Azure holds no R2
+credentials or Cloudflare API token: the Worker is the only writer, authenticated by `EDGE_SERVICE_KEY` alone.
+
+### Signed object tokens
+
+Azure mints tokens with the shared `EDGE_SERVICE_KEY`; the Worker verifies them with WebCrypto and a timing-safe
+compare. Format (base64url, no padding): `<kind>.<base64url(json payload)>.<base64url(HMAC-SHA256(payload segment))>`.
+
+| Kind | Payload | Used by |
+| --- | --- | --- |
+| `bup1` | `{key, max_bytes, content_type, exp, upload_id}` | `PUT /uploads/:token` |
+| `bdl1` | `{key, filename, content_type, exp}` | `GET /downloads/:token` |
+
+`exp` is unix seconds and a token is rejected when `exp <= now`. The HMAC covers only the payload segment, so a
+relabelled token (`bup1` presented as `bdl1`) still verifies; the per-kind payload shape check rejects it. All
+failures answer `401 {error: "token_invalid", reason}` and the token is never echoed in a response or a log line.
+Chunked uploads (no `Content-Length`) are buffered up to `max_bytes` before the R2 put; uploads with a
+`Content-Length` stream straight through.
 
 Every response carries `Content-Security-Policy: default-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'`,
 `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`; API routes add `Cache-Control: no-store`.
@@ -143,4 +171,15 @@ that uses `next_poll_after_ms`.
 expiring tickets, session exchange (cookies, Origin, no token echo), WebSocket resume and gap signalling,
 consumer ack/retry semantics and DLQ path, supervisor creation idempotency and the not-eligible Workflow path,
 the decision table, KV hit/miss/authorization-first/flag-off, capture policy rejections and the disabled flag,
-and the budget 80%/100% behaviour. Azure is stubbed by replacing global `fetch`; nothing reaches a real resource.
+the budget 80%/100% behaviour, token verification (including a known-answer vector produced with Node's `crypto`
+and the relabelled-token case), event ingestion (auth, 422, 202, artifact routing, 429 and the terminal reserve),
+uploads (both 413 paths, stored metadata), downloads (attachment headers, fixed content type, name sanitizing) and
+the internal object API. Azure is stubbed by replacing global `fetch`; the queue producers are replaced by recorders
+because this plugin version offers no producer-side inspection. Nothing reaches a real resource.
+
+## Budget note
+
+Events published through `POST /internal/events` are counted once at ingestion and
+once again when the consumer applies them, so `DAILY_BUDGET_EVENTS` is consumed
+at two units per event; 50,000 units is therefore 25,000 events per day, far
+above the expected volume. Terminal events always pass.

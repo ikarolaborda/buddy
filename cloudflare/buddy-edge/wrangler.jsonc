@@ -167,9 +167,9 @@
       "vars": {
         "AZURE_API_BASE": "https://buddy.aerolambda.tech",
         "ALLOWED_ORIGIN": "https://buddy-edge-prod.iclaborda.workers.dev",
-        "SUPERVISION_ENABLED": "false",
-        "AUTO_RECOVERY_ENABLED": "false",
-        "READ_CACHE_ENABLED": "false",
+        "SUPERVISION_ENABLED": "true",
+        "AUTO_RECOVERY_ENABLED": "true",
+        "READ_CACHE_ENABLED": "true",
         "BROWSER_DIAGNOSTICS_ENABLED": "false",
         "DAILY_BUDGET_EVENTS": "50000",
         "DAILY_BUDGET_CALLBACKS": "500",

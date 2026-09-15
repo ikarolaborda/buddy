@@ -14,6 +14,8 @@ import {
   secretsEqual,
   sessionCookies,
 } from "./http";
+import { handleEventIngest } from "./ingest";
+import { handleDownload, handleObjectContent, handleObjectCopy, handleObjectDelete, handleObjectMeta, handleUpload } from "./objects";
 import { budgetStub, progressStub } from "./stubs";
 
 export interface RouterDeps {
@@ -27,6 +29,14 @@ interface BrowserSession {
 }
 
 const SNAPSHOT_VALIDATE_AFTER = 2147483647;
+const API_PREFIXES = new Set(["session", "tasks", "internal", "uploads", "downloads"]);
+const TOKEN_PREFIXES = new Set(["uploads", "downloads"]);
+
+/** Upload and download tokens are credentials carried in the path; they never reach a log line. */
+function loggablePath(segments: string[]): string {
+  if (segments.length >= 2 && TOKEN_PREFIXES.has(segments[0]!)) return `/${segments[0]}/:token`;
+  return `/${segments.join("/")}`;
+}
 
 function readSession(request: Request): BrowserSession | null {
   const cookies = parseCookies(request.headers.get("Cookie"));
@@ -56,12 +66,12 @@ function sessionExpired(): Response {
 export async function handleRequest(request: Request, env: EdgeEnv, ctx: ExecutionContext, deps: RouterDeps = {}): Promise<Response> {
   const url = new URL(request.url);
   const segments = url.pathname.split("/").filter((s) => s.length > 0);
-  const isApi = segments[0] === "session" || segments[0] === "tasks" || segments[0] === "internal";
+  const isApi = segments[0] !== undefined && API_PREFIXES.has(segments[0]);
   let response: Response;
   try {
     response = await route(request, env, ctx, deps, url, segments);
   } catch (error) {
-    console.error(`[buddy-edge] unhandled error on ${request.method} ${url.pathname}: ${String(error)}`);
+    console.error(`[buddy-edge] unhandled error on ${request.method} ${loggablePath(segments)}: ${String(error)}`);
     response = errorJson(500, "internal_error");
   }
   return applySecurityHeaders(response, { api: isApi });
@@ -96,6 +106,18 @@ async function route(request: Request, env: EdgeEnv, ctx: ExecutionContext, deps
     return errorJson(404, "not_found");
   }
 
+  // Public by design: the signed token in the path is the only credential, so the edge key must exist to verify it.
+  if (segments[0] === "uploads" && segments.length === 2) {
+    if (!env.EDGE_SERVICE_KEY) return errorJson(503, "edge_key_not_configured");
+    if (method !== "PUT") return errorJson(405, "method_not_allowed");
+    return handleUpload(request, env, segments[1]!);
+  }
+  if (segments[0] === "downloads" && segments.length === 2) {
+    if (!env.EDGE_SERVICE_KEY) return errorJson(503, "edge_key_not_configured");
+    if (method !== "GET") return errorJson(405, "method_not_allowed");
+    return handleDownload(env, segments[1]!);
+  }
+
   if (segments[0] === "internal") {
     if (!env.EDGE_SERVICE_KEY) return errorJson(503, "edge_key_not_configured");
     if (!edgeKeyValid(request, env)) return errorJson(401, "edge_key_invalid");
@@ -108,6 +130,28 @@ async function route(request: Request, env: EdgeEnv, ctx: ExecutionContext, deps
       const budget = budgetStub(env);
       const [report, reconciliation] = await Promise.all([budget.read(), budget.listReconciliation()]);
       return json({ ...report, reconciliation });
+    }
+    if (segments[1] === "events" && segments.length === 2) {
+      if (method !== "POST") return errorJson(405, "method_not_allowed");
+      return handleEventIngest(request, env);
+    }
+    if (segments[1] === "objects") {
+      if (segments.length === 2) {
+        if (method !== "DELETE") return errorJson(405, "method_not_allowed");
+        return handleObjectDelete(env, url);
+      }
+      if (segments.length === 3 && segments[2] === "meta") {
+        if (method !== "GET") return errorJson(405, "method_not_allowed");
+        return handleObjectMeta(env, url);
+      }
+      if (segments.length === 3 && segments[2] === "content") {
+        if (method !== "GET") return errorJson(405, "method_not_allowed");
+        return handleObjectContent(env, url);
+      }
+      if (segments.length === 3 && segments[2] === "copy") {
+        if (method !== "POST") return errorJson(405, "method_not_allowed");
+        return handleObjectCopy(request, env);
+      }
     }
     return errorJson(404, "not_found");
   }

@@ -145,6 +145,51 @@ export function cookieHeaderFrom(response: Response): string {
     .join("; ");
 }
 
+export const FAR_FUTURE_EXP = 4102444800;
+
+/**
+ * Test-side mirror of the Azure signer: `<kind>.<base64url(json)>.<base64url(HMAC-SHA256(payload segment))>`.
+ * Written against WebCrypto directly so it does not share code with the Worker's verifier.
+ */
+export async function signEdgeToken(kind: string, payload: Record<string, unknown>, secret: string = EDGE_KEY): Promise<string> {
+  const encoder = new TextEncoder();
+  const segment = base64Url(encoder.encode(JSON.stringify(payload)));
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(segment)));
+  return `${kind}.${segment}.${base64Url(signature)}`;
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function uploadPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    key: `clients/${currentClientId()}/task-1/report.txt`,
+    max_bytes: 4096,
+    content_type: "text/plain",
+    exp: FAR_FUTURE_EXP,
+    upload_id: "report.txt",
+    ...overrides,
+  };
+}
+
+export function downloadPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    key: `clients/${currentClientId()}/task-1/report.txt`,
+    filename: "report.txt",
+    content_type: "text/plain",
+    exp: FAR_FUTURE_EXP,
+    ...overrides,
+  };
+}
+
+export function internalHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { "X-Buddy-Edge-Key": EDGE_KEY, ...extra };
+}
+
 export function baseRoutes(): Record<string, StubHandler> {
   return {
     "POST /api/internal/cloudflare/sessions/exchange": () => Response.json({ ...SESSION, client_id: SESSION.client_id }, { status: 201 }),

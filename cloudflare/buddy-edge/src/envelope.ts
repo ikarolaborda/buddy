@@ -118,6 +118,11 @@ export function isProgressEnvelope(envelope: EventEnvelope): boolean {
   return envelope.type === EVENT_TYPES.progress;
 }
 
+/** Artifact events travel the isolated artifacts queue. */
+export function isArtifactEnvelope(envelope: EventEnvelope): boolean {
+  return envelope.type.startsWith("buddy.task.artifact.");
+}
+
 export function envelopePhase(envelope: EventEnvelope): string | null {
   const phase = envelope.data.phase;
   return typeof phase === "string" ? phase : null;
