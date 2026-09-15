@@ -26,6 +26,7 @@ use App\Models\PromptVersion;
 use App\Models\TaskFeedback;
 use App\Services\Council\CouncilProfile;
 use App\Services\Council\CouncilService;
+use App\Services\Edge\TaskProgressService;
 use App\Services\Observability\LangSmithTracer;
 use App\Support\ErrorClassifier;
 use Illuminate\Support\Facades\DB;
@@ -230,10 +231,16 @@ class EvaluatorOptimizerService
         }
 
         $run = $this->createRun($task, $runType);
+        $progress = app(TaskProgressService::class);
 
         try {
+            $progress->phase($task, 'memory', ['run_id' => $run->id, 'run_type' => $runType]);
             $memoryPage = $this->searchMemory($task);
             $this->storeMemoryReferences($task, $memoryPage);
+
+            if ($runType !== 'council') {
+                $progress->phase($task, 'evaluation', ['run_id' => $run->id, 'run_type' => $runType], (int) config('buddy.timeouts.provider'));
+            }
 
             [$domainResult, $evaluation, $refinementPayload, $tokenUsage, $councilPayload] = array_pad($callback($task, $run, $memoryPage), 5, null);
 

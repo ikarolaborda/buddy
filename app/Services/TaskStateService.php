@@ -4,12 +4,17 @@ namespace App\Services;
 
 use App\Enums\TaskStatus;
 use App\Models\BuddyTask;
+use App\Services\Edge\TaskProgressService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class TaskStateService
 {
+    public function __construct(
+        protected TaskProgressService $progress,
+    ) {}
+
     /*
      * The atomic UPDATE ... WHERE guard is the correctness boundary for
      * concurrent workers: queue-level unique jobs and overlap locks are
@@ -31,6 +36,7 @@ class TaskStateService
                 'claimed_by' => $owner,
                 'lease_expires_at' => now()->addSeconds($leaseSeconds),
                 'heartbeat_at' => now(),
+                'worker_started_at' => now(),
                 'state_version' => DB::raw('state_version + 1'),
             ]);
 
@@ -120,6 +126,41 @@ class TaskStateService
             );
         }
 
+        $previous = $task->status;
         $task->refresh();
+        $this->recordProgress($task, $previous, $next);
+    }
+
+    /*
+     * Lifecycle facts for the dashboard and supervisor (plan §7). Inert while
+     * the edge flags are off: the progress service returns without touching
+     * the database, so legacy transitions keep their exact write set.
+     */
+    protected function recordProgress(BuddyTask $task, TaskStatus $previous, TaskStatus $next): void
+    {
+        if (! $this->progress->enabled()) {
+            return;
+        }
+
+        if ($previous === TaskStatus::Pending && $next === TaskStatus::Evaluating) {
+            BuddyTask::query()->whereKey($task->id)->update(['queued_at' => now()]);
+            $task->queued_at = now();
+            $this->progress->phase($task, 'queued', ['operation' => $task->operation]);
+
+            return;
+        }
+
+        if ($next->isTerminal()) {
+            $data = [];
+
+            if ($next === TaskStatus::Failed) {
+                $category = $task->runs()->orderByDesc('run_number')->value('error_category');
+                BuddyTask::query()->whereKey($task->id)->update(['failure_category' => $category]);
+                $task->failure_category = $category;
+                $data['failure_category'] = $category;
+            }
+
+            $this->progress->terminal($task, $data);
+        }
     }
 }

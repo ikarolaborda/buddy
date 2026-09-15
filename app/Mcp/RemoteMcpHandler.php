@@ -14,6 +14,7 @@ use App\Models\BuddyIntervention;
 use App\Models\BuddyTask;
 use App\Services\Council\CouncilGate;
 use App\Services\Council\CouncilProfile;
+use App\Services\Edge\TaskProgressProjection;
 use App\Services\EvaluatorOptimizerService;
 use App\Services\Interventions\InterventionService;
 use App\Services\OutboxPublisher;
@@ -341,7 +342,7 @@ class RemoteMcpHandler
             ],
             'council_eligible' => app(CouncilGate::class)
                 ->evaluate($task, null, null)['allowed'],
-        ]);
+        ] + (config('buddy.edge.progress') ? ['progress' => TaskProgressProjection::for($task)] : []));
     }
 
     /**

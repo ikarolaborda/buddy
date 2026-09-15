@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AuthenticateApiKey;
+use App\Http\Middleware\AuthenticateEdgeService;
 use App\Http\Middleware\ValidateMcpOrigin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.buddy' => AuthenticateApiKey::class,
             'mcp.origin' => ValidateMcpOrigin::class,
+            'edge.service' => AuthenticateEdgeService::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Buddy;
 
 use App\Models\BuddyTask;
+use App\Services\Edge\TaskProgressProjection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -35,6 +36,9 @@ class BuddyTaskResource extends JsonResource
             ),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
+            // Additive and flag-gated so legacy clients keep byte-identical
+            // responses while BUDDY_EDGE_PROGRESS is false (plan §7).
+            'progress' => $this->when((bool) config('buddy.edge.progress'), fn () => TaskProgressProjection::for($this->resource)),
         ];
     }
 }

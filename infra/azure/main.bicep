@@ -58,6 +58,19 @@ param azureOpenAiUrl string = 'https://aerolambda-ai-eastus2.openai.azure.com'
 @description('Direct-from-Azure deployment used by Buddy evaluation agents')
 param azureOpenAiDeployment string = 'gpt-6-astra'
 
+@description('Redis list the worker KEDA scaler measures. Must equal the Laravel prefix + queues:<queue> the worker writes; see modules/buddy-worker.bicep.')
+param redisQueueListName string = 'laravel-database-queues:default'
+
+@description('Optional host:port the worker KEDA scaler dials instead of the worker Redis host. Empty keeps host:port.')
+param redisScaleAddress string = ''
+
+@description('Worker scale rule type: redis (direct list) or metrics-api (authenticated Buddy API queue-depth endpoint, ADR 0012).')
+@allowed(['redis', 'metrics-api'])
+param workerScaleRuleType string = 'redis'
+
+@description('Public URL of the Buddy API queue-depth endpoint used by the metrics-api scale rule.')
+param scalingMetricsUrl string = ''
+
 module network 'modules/network.bicep' = {
   name: 'network'
   params: {
@@ -195,6 +208,10 @@ module buddyWorker 'modules/buddy-worker.bicep' = if (deployWorkloads && deployB
     redisHostName: redisHost
     redisPort: redisPort
     redisUseTls: redisTls
+    redisQueueListName: redisQueueListName
+    redisScaleAddress: redisScaleAddress
+    workerScaleRuleType: workerScaleRuleType
+    scalingMetricsUrl: scalingMetricsUrl
     memoryHubInternalUrl: memoryHub!.outputs.internalUrl
     azureOpenAiUrl: azureOpenAiUrl
     azureOpenAiDeployment: azureOpenAiDeployment

@@ -18,6 +18,76 @@ param memoryHubInternalUrl string
 param azureOpenAiUrl string
 param azureOpenAiDeployment string
 
+// The KEDA redis scaler measures a raw Redis list, so it must name the key
+// Laravel actually writes: config('database.redis.options.prefix') followed by
+// 'queues:'.<queue>. Neither APP_NAME nor REDIS_PREFIX nor REDIS_QUEUE is set on
+// the worker, so the prefix is Str::slug('Laravel').'-database-' and the queue is
+// 'default'. Measured inside the production worker on 2026-09-15 (P0 of the
+// Cloudflare plan): prefix laravel-database-, queue default, db 0. The previous
+// value 'buddy:queue:default' never existed, so the scaler always read 0 and
+// maxReplicas was decorative. tests/Unit/RedisQueueScaleRuleTest.php pins the
+// derivation so a future APP_NAME/REDIS_PREFIX change fails CI unless this
+// default changes with it.
+param redisQueueListName string = 'laravel-database-queues:default'
+
+// Address the SCALER dials, which is not necessarily the address the worker
+// dials. KEDA runs in the environment's system namespace; the short app name
+// resolves there to the app's cluster service IP, which refused every dial for
+// 14 days (1,469 KEDAScalerFailed events, 2026-09-01..15) while app pods using
+// the identical name connected fine. Leave empty to use host:port; set it after
+// a probe app proves a reachable address (docs/recipes/redis-autoscaling-repair.md).
+param redisScaleAddress string = ''
+
+// 'redis' keeps the direct list measurement. 'metrics-api' polls the Buddy API's
+// authenticated queue-depth endpoint over the public ingress instead, which is
+// the path the scaler can actually reach (ADR 0012). The endpoint reports the
+// same list, so the threshold semantics do not change.
+@allowed(['redis', 'metrics-api'])
+param workerScaleRuleType string = 'redis'
+param scalingMetricsUrl string = ''
+
+var scaleAddress = empty(redisScaleAddress) ? '${redisHostName}:${redisPort}' : redisScaleAddress
+
+var redisScaleRule = {
+  name: 'redis-queue-depth'
+  custom: {
+    type: 'redis'
+    metadata: {
+      address: scaleAddress
+      listName: redisQueueListName
+      listLength: '10'
+      enableTLS: redisUseTls ? 'true' : 'false'
+    }
+    auth: [
+      {
+        secretRef: 'redis-password'
+        triggerParameter: 'password'
+      }
+    ]
+  }
+}
+
+var metricsApiScaleRule = {
+  name: 'queue-depth-api'
+  custom: {
+    type: 'metrics-api'
+    metadata: {
+      url: scalingMetricsUrl
+      valueLocation: 'pending'
+      targetValue: '10'
+      authMode: 'apiKey'
+      method: 'header'
+      keyParamName: 'X-Buddy-Scaling-Key'
+    }
+    auth: [
+      {
+        secretRef: 'scaling-metrics-key'
+        triggerParameter: 'apiKey'
+      }
+    ]
+  }
+}
+
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 
@@ -118,6 +188,11 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/azure-openai-api-key'
           identity: identity.id
         }
+        {
+          name: 'scaling-metrics-key'
+          keyVaultUrl: '${keyVaultUri}secrets/buddy-scaling-metrics-key'
+          identity: identity.id
+        }
       ]
     }
     template: {
@@ -125,24 +200,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         minReplicas: 1
         maxReplicas: 4
         rules: [
-          {
-            name: 'redis-queue-depth'
-            custom: {
-              type: 'redis'
-              metadata: {
-                address: '${redisHostName}:${redisPort}'
-                listName: 'buddy:queue:default'
-                listLength: '10'
-                enableTLS: redisUseTls ? 'true' : 'false'
-              }
-              auth: [
-                {
-                  secretRef: 'redis-password'
-                  triggerParameter: 'password'
-                }
-              ]
-            }
-          }
+          workerScaleRuleType == 'metrics-api' ? metricsApiScaleRule : redisScaleRule
         ]
       }
       containers: [

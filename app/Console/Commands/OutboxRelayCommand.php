@@ -43,8 +43,12 @@ class OutboxRelayCommand extends Command
 
     protected function processBatch(OutboxPublisher $publisher): int
     {
+        // Quarantined rows (unknown topics) are excluded on purpose: replaying
+        // them every five minutes would only repeat the same rejection. They
+        // stay visible through buddy:outbox-replay --list-quarantined.
         $messages = OutboxMessage::query()
             ->whereNull('processed_at')
+            ->whereNull('quarantined_at')
             ->where('available_at', '<=', now())
             ->orderBy('id')
             ->limit((int) $this->option('batch'))

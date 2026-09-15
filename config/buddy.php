@@ -264,6 +264,103 @@ return [
         'cache_tool_definitions' => (bool) env('BUDDY_MCP_CACHE_TOOLS', true),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Worker autoscaling signal
+    |--------------------------------------------------------------------------
+    |
+    | The Azure KEDA scaler cannot dial the in-environment Redis service (P0 of
+    | the 2026-09-15 Cloudflare plan, ADR 0012), so the worker can instead
+    | scale on an authenticated queue-depth endpoint served by the API. The
+    | endpoint reports the same Redis list the worker consumes. It is disabled
+    | until a key is configured.
+    |
+    */
+
+    'scaling' => [
+        'metrics_key' => env('BUDDY_SCALING_METRICS_KEY'),
+        'queue' => env('REDIS_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cloudflare edge features
+    |--------------------------------------------------------------------------
+    |
+    | Every flag ships false. PostgreSQL stays the authority for tasks, claims,
+    | leases, recovery and artifact metadata; Cloudflare only receives
+    | projections, background transport and bounded storage. A Cloudflare
+    | outage must never block task submission or Azure evaluation, so nothing
+    | in the request path performs Cloudflare I/O: remote deliveries run from
+    | the outbox relay and queued jobs (plan §6).
+    |
+    */
+
+    'edge' => [
+        'events' => (bool) env('BUDDY_EDGE_EVENTS', false),
+        'progress' => (bool) env('BUDDY_EDGE_PROGRESS', false),
+        'supervision' => (bool) env('BUDDY_EDGE_SUPERVISION', false),
+        'auto_recovery' => (bool) env('BUDDY_EDGE_AUTO_RECOVERY', false),
+        'artifacts' => (bool) env('BUDDY_EDGE_ARTIFACTS', false),
+        'read_cache' => (bool) env('BUDDY_EDGE_READ_CACHE', false),
+        'browser_diagnostics' => (bool) env('BUDDY_EDGE_BROWSER_DIAGNOSTICS', false),
+
+        /*
+         * The Worker authenticates to /api/internal/cloudflare with its own
+         * limited service key and never with a client API key. Delegations
+         * are HMAC tokens minted by Azure that bind client, task, generation,
+         * scopes and expiry; ownership and revocation are re-checked on every
+         * use, so a delegation is a selector plus proof of issuance, never a
+         * cross-tenant authority.
+         */
+        'service_key' => env('BUDDY_EDGE_SERVICE_KEY'),
+        'delegation_secret' => env('BUDDY_EDGE_DELEGATION_SECRET'),
+        'delegation_ttl' => (int) env('BUDDY_EDGE_DELEGATION_TTL', 172800),
+        'allowed_origins' => array_filter(array_map('trim', explode(',', (string) env('BUDDY_EDGE_ALLOWED_ORIGINS', '')))),
+        'view_ticket_ttl' => (int) env('BUDDY_EDGE_VIEW_TICKET_TTL', 60),
+        'session_ttl' => (int) env('BUDDY_EDGE_SESSION_TTL', 900),
+        'session_max_lifetime' => (int) env('BUDDY_EDGE_SESSION_MAX_LIFETIME', 14400),
+        'event_max_bytes' => (int) env('BUDDY_EDGE_EVENT_MAX_BYTES', 16384),
+        'schema_version' => 1,
+
+        'cloudflare' => [
+            'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
+            'api_base' => env('BUDDY_EDGE_CLOUDFLARE_API_BASE', 'https://api.cloudflare.com/client/v4'),
+            'queues_token' => env('BUDDY_EDGE_QUEUES_TOKEN'),
+            'events_queue_id' => env('BUDDY_EDGE_EVENTS_QUEUE_ID'),
+            'artifacts_queue_id' => env('BUDDY_EDGE_ARTIFACTS_QUEUE_ID'),
+            'publish_timeout' => (int) env('BUDDY_EDGE_PUBLISH_TIMEOUT', 5),
+            'publish_max_attempts' => (int) env('BUDDY_EDGE_PUBLISH_MAX_ATTEMPTS', 25),
+        ],
+
+        'budget' => [
+            'total_usd' => (float) env('BUDDY_EDGE_BUDGET_TOTAL_USD', 25),
+            'daily_usd' => (float) env('BUDDY_EDGE_BUDGET_DAILY_USD', 2),
+            'alert_ratio' => (float) env('BUDDY_EDGE_BUDGET_ALERT_RATIO', 0.8),
+        ],
+
+        'quotas' => [
+            'upload_bytes' => (int) env('BUDDY_EDGE_UPLOAD_BYTES', 26214400),
+            'task_bytes' => (int) env('BUDDY_EDGE_TASK_BYTES', 104857600),
+            'client_daily_bytes' => (int) env('BUDDY_EDGE_CLIENT_DAILY_BYTES', 1073741824),
+            'active_reservations' => (int) env('BUDDY_EDGE_ACTIVE_RESERVATIONS', 10),
+            'captures_per_client_per_day' => (int) env('BUDDY_EDGE_CAPTURES_PER_DAY', 10),
+            'capture_seconds' => (int) env('BUDDY_EDGE_CAPTURE_SECONDS', 30),
+            'concurrent_captures' => (int) env('BUDDY_EDGE_CONCURRENT_CAPTURES', 2),
+        ],
+
+        'retention' => [
+            'artifact_days' => (int) env('BUDDY_EDGE_ARTIFACT_RETENTION_DAYS', 30),
+            'quarantine_days' => (int) env('BUDDY_EDGE_QUARANTINE_DAYS', 7),
+            'upload_url_seconds' => (int) env('BUDDY_EDGE_UPLOAD_URL_SECONDS', 300),
+            'download_url_seconds' => (int) env('BUDDY_EDGE_DOWNLOAD_URL_SECONDS', 120),
+            'event_days' => (int) env('BUDDY_EDGE_EVENT_RETENTION_DAYS', 30),
+            'replay_buffer_events' => 100,
+            'replay_buffer_hours' => 24,
+            'summary_cache_seconds' => (int) env('BUDDY_EDGE_SUMMARY_CACHE_SECONDS', 3600),
+        ],
+    ],
+
     'qdrant' => [
         'host' => env('QDRANT_HOST', 'http://localhost'),
         'port' => (int) env('QDRANT_PORT', 6333),

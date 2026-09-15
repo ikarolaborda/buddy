@@ -10,6 +10,7 @@ use App\Models\ApiClient;
 use App\Models\ApiKey;
 use App\Models\BuddyIntervention;
 use App\Models\BuddyTask;
+use App\Services\Edge\TaskProgressService;
 use App\Services\OutboxPublisher;
 use App\Services\TaskStateService;
 use Illuminate\Http\Client\ConnectionException;
@@ -26,6 +27,7 @@ class InterventionService
         private ServiceDiagnostics $diagnostics,
         private OutboxPublisher $outbox,
         private TaskStateService $state,
+        private TaskProgressService $progress,
     ) {}
 
     public function perform(BuddyTask $task, ApiClient $client, ApiKey $key, array $input): array
@@ -33,6 +35,25 @@ class InterventionService
         abort_unless($key->api_client_id === $client->id && $key->hasScope(ApiScope::InterventionsExecute), 403);
         abort_unless($task->api_client_id !== null && ($task->api_client_id === $client->id || $key->hasScope(ApiScope::Admin)), 404);
 
+        return $this->execute($task, $client, $input, $key->hasScope(ApiScope::Admin), 'api_key');
+    }
+
+    /*
+     * Delegated path for the Cloudflare supervisor (plan §8). The caller has
+     * already verified a delegation bound to this task, generation and the
+     * owning client's current interventions:execute scope; admin bypass is
+     * never available through a delegation. Everything else is the same
+     * bounded operation, so the audit trail records the principal.
+     */
+    public function performDelegated(BuddyTask $task, ApiClient $client, array $input, string $delegationId): array
+    {
+        abort_unless($task->api_client_id !== null && $task->api_client_id === $client->id, 404);
+
+        return $this->execute($task, $client, $input, false, 'delegation:'.$delegationId);
+    }
+
+    private function execute(BuddyTask $task, ApiClient $client, array $input, bool $admin, string $principal): array
+    {
         if (! config('buddy.interventions.enabled')) {
             throw ValidationException::withMessages(['action' => 'Interventions are disabled.']);
         }
@@ -50,9 +71,9 @@ class InterventionService
         ]);
         $hash = hash_hmac('sha256', (string) json_encode($this->canonical($args)), (string) config('app.key'));
 
-        [$intervention, $created] = DB::transaction(function () use ($task, $client, $key, $args, $hash) {
+        [$intervention, $created] = DB::transaction(function () use ($task, $client, $admin, $principal, $args, $hash) {
             $task = BuddyTask::query()->lockForUpdate()->findOrFail($task->id);
-            abort_unless($task->api_client_id !== null && ($task->api_client_id === $client->id || $key->hasScope(ApiScope::Admin)), 404);
+            abort_unless($task->api_client_id !== null && ($task->api_client_id === $client->id || $admin), 404);
             $existing = BuddyIntervention::where('buddy_task_id', $task->id)->where('request_id', $args['request_id'])->first();
             if ($existing !== null) {
                 if (! hash_equals($existing->request_hash, $hash)) {
@@ -69,7 +90,7 @@ class InterventionService
                 'request_hash' => $hash,
                 'action' => $args['action'],
                 'status' => 'running',
-                'context' => $this->context->capture($task, $args['context']) + ['blocker' => $args['blocker']],
+                'context' => $this->context->capture($task, $args['context']) + ['blocker' => $args['blocker'], 'principal' => $principal],
             ]);
 
             if ($args['action'] === 'recover_evaluation') {
@@ -146,6 +167,10 @@ class InterventionService
         $this->state->transition($recovery, TaskStatus::Evaluating);
         $this->outbox->appendTaskSubmitted($recovery);
         $intervention->update(['status' => 'dispatched', 'result' => $this->recoveryResult($recovery)]);
+        $this->progress->record($task, TaskProgressService::TYPE_RECOVERY, [
+            'recovery_task_id' => $recovery->ulid,
+            'intervention_id' => $intervention->id,
+        ]);
     }
 
     private function recoveryResult(BuddyTask $task): array

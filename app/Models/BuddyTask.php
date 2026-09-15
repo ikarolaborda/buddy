@@ -6,8 +6,10 @@ use App\Enums\ProblemType;
 use App\Enums\TaskStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 class BuddyTask extends Model
@@ -35,6 +37,12 @@ class BuddyTask extends Model
         'knowledge_context_hash',
         'knowledge_context_fetched_at',
         'knowledge_context_error',
+        'phase',
+        'phase_started_at',
+        'phase_deadline_at',
+        'queued_at',
+        'worker_started_at',
+        'failure_category',
     ];
 
     protected function casts(): array
@@ -48,6 +56,10 @@ class BuddyTask extends Model
             'heartbeat_at' => 'datetime',
             'knowledge_context' => 'array',
             'knowledge_context_fetched_at' => 'datetime',
+            'phase_started_at' => 'datetime',
+            'phase_deadline_at' => 'datetime',
+            'queued_at' => 'datetime',
+            'worker_started_at' => 'datetime',
         ];
     }
 
@@ -68,9 +80,29 @@ class BuddyTask extends Model
         return $this->hasMany(BuddyRun::class);
     }
 
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(ApiClient::class, 'api_client_id');
+    }
+
     public function artifacts(): HasMany
     {
         return $this->hasMany(BuddyArtifact::class);
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(BuddyTaskEvent::class);
+    }
+
+    public function viewTickets(): HasMany
+    {
+        return $this->hasMany(BuddyViewTicket::class);
+    }
+
+    public function recoveryTask(): HasOne
+    {
+        return $this->hasOne(self::class, 'recovery_of_task_id');
     }
 
     public function questions(): HasMany

@@ -5,6 +5,7 @@ namespace App\Services\Council;
 use App\DTOs\MemorySearchPage;
 use App\Enums\ArtifactType;
 use App\Models\BuddyTask;
+use App\Services\Edge\TaskProgressService;
 use App\Services\TaskStateService;
 use Illuminate\Support\Facades\Log;
 
@@ -51,6 +52,14 @@ class CouncilService
         ];
         $transcript['roster'] = $roster;
 
+        // The dashboard shows real model names and review roles once a
+        // council starts (plan §7); never reasoning, never prompts.
+        $this->phase($task, 'council.frame', [
+            'profile' => $profile['profile'],
+            'chairman' => ['model' => $chairman['model'], 'role' => 'chairman'],
+            'members' => array_map(fn ($m) => ['key' => $m['key'], 'model' => $m['model'], 'role' => $m['review_focus'] ?? 'reviewer'], $members),
+        ]);
+
         // R0: chairman frames hypotheses with kill conditions.
         $frame = $client->ask($chairman, $this->framingSystem(), $this->framingPrompt($packet));
         $this->tally($usage, $frame['usage']);
@@ -63,6 +72,7 @@ class CouncilService
         $transcript['rounds']['frame'] = $frame['json'];
         $this->checkpoint($task, 'frame', $frame['json']);
         $this->beat($task, $claimOwner);
+        $this->phase($task, 'council.positions', ['hypotheses' => count($hypotheses)]);
 
         // R1: independent positions, in parallel, shared packet.
         $positions = $client->askAll(
@@ -84,6 +94,7 @@ class CouncilService
         $transcript['absent_after_r1'] = $absent;
         $this->checkpoint($task, 'positions', $anonymous['transcript']);
         $this->beat($task, $claimOwner);
+        $this->phase($task, 'council.attacks', ['present' => count($present), 'absent' => $absent]);
 
         // R2: falsification round over anonymized positions. Membership
         // is frozen: R1 absentees do not attack a debate they never
@@ -105,6 +116,7 @@ class CouncilService
 
         $this->checkpoint($task, 'attacks', $transcript['rounds']['attacks']);
         $this->beat($task, $claimOwner);
+        $this->phase($task, 'council.verdict', ['silent_in_falsification' => $silent]);
 
         // Mechanical adjudication inputs: PHP, not a model.
         $tally = $this->adjudicate($packet, $hypotheses, $present, $positions, $attacks);
@@ -483,6 +495,19 @@ class CouncilService
             ]);
         } catch (\Throwable $e) {
             Log::warning('Council round checkpoint failed', ['round' => $round, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /*
+     * Progress facts are best effort: a failed event write must not abort a
+     * council that already paid for its rounds.
+     */
+    protected function phase(BuddyTask $task, string $phase, array $data): void
+    {
+        try {
+            app(TaskProgressService::class)->phase($task, $phase, $data, (int) config('buddy_agents.council.call_timeout', 600));
+        } catch (\Throwable $e) {
+            Log::warning('Council progress event failed', ['phase' => $phase, 'error' => $e->getMessage()]);
         }
     }
 
