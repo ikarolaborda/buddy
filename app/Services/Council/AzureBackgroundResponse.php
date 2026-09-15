@@ -85,8 +85,15 @@ final class AzureBackgroundResponse
             }
         }
 
+        // Azure puts the reason a background generation died in error{code,
+        // message}; dropping it once cost a diagnosis (2026-09-15, run 1406).
         if (! $refused && ! in_array($body['status'] ?? '', ['completed', 'incomplete'], true)) {
-            return $this->error('Azure response ended with status '.($body['status'] ?? 'unknown').'.');
+            $reason = trim(implode(' ', array_filter([
+                isset($body['error']['code']) ? '['.$body['error']['code'].']' : null,
+                isset($body['error']['message']) ? mb_substr((string) $body['error']['message'], 0, 300) : null,
+            ])));
+
+            return $this->error('Azure response ended with status '.($body['status'] ?? 'unknown').($reason !== '' ? ': '.$reason : '.'));
         }
         if (! $refused && ($body['status'] ?? '') === 'incomplete' && ($body['incomplete_details']['reason'] ?? '') !== 'max_output_tokens') {
             return $this->error('Azure response incomplete without an output-token limit.');

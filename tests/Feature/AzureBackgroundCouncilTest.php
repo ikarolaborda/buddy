@@ -19,6 +19,19 @@ class AzureBackgroundCouncilTest extends TestCase
         Sleep::fake();
     }
 
+    public function test_a_failed_background_response_reports_the_provider_error(): void
+    {
+        Http::fake(['azure.example/*' => Http::sequence()
+            ->push(['id' => 'resp_test', 'status' => 'queued'])
+            ->push(['id' => 'resp_test', 'status' => 'failed', 'error' => ['code' => 'server_error', 'message' => 'The model produced an invalid response.'], 'output' => []])
+            ->push([], 200)]);
+
+        $result = (new CouncilClient)->forProfile('azure')->ask(CouncilProfile::resolve('azure')['chairman'], 'Frame.', 'packet');
+
+        $this->assertNull($result['json']);
+        $this->assertSame('HTTP 502: {"error":{"message":"Azure response ended with status failed: [server_error] The model produced an invalid response."}}', $result['error']);
+    }
+
     private function completed(): array
     {
         return ['status' => 'completed', 'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => '{"ok":true}']]]], 'usage' => ['input_tokens' => 10, 'output_tokens' => 20, 'output_tokens_details' => ['reasoning_tokens' => 15]]];
