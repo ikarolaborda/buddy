@@ -13,6 +13,16 @@ class BuddyArtifact extends Model
         'type',
         'content',
         'metadata',
+        'object_key',
+        'size_bytes',
+        'media_type',
+        'sha256',
+        'storage_status',
+        'original_artifact_id',
+        'processor_version',
+        'processing_status',
+        'retention_until',
+        'deleted_at',
     ];
 
     protected function casts(): array
@@ -20,6 +30,9 @@ class BuddyArtifact extends Model
         return [
             'type' => ArtifactType::class,
             'metadata' => 'array',
+            'size_bytes' => 'integer',
+            'retention_until' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
