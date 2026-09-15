@@ -36,7 +36,14 @@ class SyntheticSleepJob implements ShouldQueue
 
         Log::info('Synthetic queue load job started', ['batch' => $this->batchId, 'index' => $this->index, 'seconds' => $seconds]);
 
-        sleep($seconds);
+        // sleep() returns early when a signal arrives, so a SIGTERM from the
+        // process manager would make a drain look instant and a scale-in look
+        // free. Holding the slot until the deadline keeps the experiment honest.
+        $deadline = microtime(true) + $seconds;
+
+        while (($remaining = $deadline - microtime(true)) > 0) {
+            usleep((int) min(250_000, $remaining * 1_000_000));
+        }
 
         Log::info('Synthetic queue load job finished', ['batch' => $this->batchId, 'index' => $this->index]);
     }
