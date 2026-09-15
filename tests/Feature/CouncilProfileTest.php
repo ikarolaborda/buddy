@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Services\Council\CouncilClient;
+use App\Services\Council\CouncilProfile;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -162,16 +163,8 @@ class CouncilProfileTest extends TestCase
     /** @return array<int, array<string, mixed>> */
     private function workersAiRoster(): array
     {
-        putenv('BUDDY_COUNCIL_PROFILE=workers_ai');
-        $_ENV['BUDDY_COUNCIL_PROFILE'] = 'workers_ai';
+        $profile = CouncilProfile::resolve('workers_ai');
 
-        try {
-            $config = require config_path('buddy_agents.php');
-
-            return array_merge([$config['council']['chairman']], $config['council']['members']);
-        } finally {
-            putenv('BUDDY_COUNCIL_PROFILE');
-            unset($_ENV['BUDDY_COUNCIL_PROFILE']);
-        }
+        return array_merge([$profile['chairman']], $profile['members']);
     }
 }
