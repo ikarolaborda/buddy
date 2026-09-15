@@ -82,8 +82,10 @@ quoted inside, without `$` variables.
   start --yaml`), because `--args` cannot carry tokens that begin with `--`.
   `pending` went 0 to 30 on `laravel-database-queues:default`.
 - Scale-out observed: 16:06:29 three replicas provisioned, 16:07:02 three
-  running with `reserved 3`, `pending 27`. Drain and scale-in are recorded in
-  the evidence manifest.
+  running with `reserved 3`, `pending 27`. Drain at about two jobs per minute;
+  16:15:38 two replicas at `pending 11`; 16:23:08 one replica at `pending 2`;
+  16:24:41 `pending 0` with one replica remaining. 30 of 30 synthetic jobs
+  finished exactly once. Gate G1 passed; full timeline in the evidence manifest.
 - Both probe apps were deleted after the evidence above was captured; recreate
   one with `az containerapp create --min-replicas 0 --max-replicas 1` if a new
   scaler address needs testing without touching the worker.

@@ -212,7 +212,7 @@ Preview resources (`buddy-events-preview`, `buddy-events-dlq-preview`, `buddy-ar
 
 ### Gates
 
-G0 passed. G1: key fix and metrics-api signal live; the synthetic 30-job backlog scaled the worker from one to three replicas within about 90 seconds (details in the runbook and evidence manifest). G2, G3, G5 (fakes and PostgreSQL suites), G6 (fake object store) pass locally. G4 depends on the Worker tests. G7 stays open: Browser Run coverage under the startup grant remains unconfirmed and `BUDDY_EDGE_BROWSER_DIAGNOSTICS` stays false. G8: rollout, budgets and rollback are documented in [cloudflare-edge-rollout.md](../recipes/cloudflare-edge-rollout.md); the production rollout itself has not been performed. Do not describe the six capabilities as complete while G1, G7 and the production rollout remain open.
+G0 passed. G1 passed: key fix and metrics-api signal live; the synthetic 30-job backlog scaled the worker from one to three replicas within about 90 seconds, drained at about two jobs per minute, scaled back to one replica, and every job ran exactly once (runbook and evidence manifest). G2, G3, G5 (fakes and PostgreSQL suites), G6 (fake object store) pass locally. G4 depends on the Worker tests. G7 stays open: Browser Run coverage under the startup grant remains unconfirmed and `BUDDY_EDGE_BROWSER_DIAGNOSTICS` stays false. G8: rollout, budgets and rollback are documented in [cloudflare-edge-rollout.md](../recipes/cloudflare-edge-rollout.md); the production rollout itself has not been performed. Do not describe the six capabilities as complete while G1, G7 and the production rollout remain open.
 
 ## Resume and finish procedure
 

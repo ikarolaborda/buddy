@@ -39,18 +39,27 @@ session).
 | 16:06:29 | 3 replicas provisioned (1 Running, 2 starting), `pending 27, reserved 3` |
 | 16:07:02 | 3 Running, `pending 27, reserved 3` |
 | 16:08:09 | 3 Running, `pending 24, reserved 3` (drain about 2 jobs/min) |
+| 16:15:38 | `pending 11` -> 2 Running (scale-in step, `ceil(11/10)`) |
+| 16:23:08 | `pending 2` -> 1 Running |
+| 16:24:41 | `pending 0`; last synthetic job finishing; 1 replica remains through 16:34 |
 
 Desired replicas follow `ceil(pending / 10)`, so a 30-job backlog yields three
 workers, which satisfies "at least two ready workers" with the configured
-threshold. No scaler failure was logged on the new revision. Drain completion
-and scale-in after the 300 s cooldown are recorded in the follow-up commit.
+threshold, and scale-in stepped down with the backlog while one replica
+remained. Log Analytics since the release shows exactly one `KEDAScalerFailed`
+(16:01:10, the old revision's Redis rule before its scaled object was removed)
+and `Scaler metrics-api is built` at 16:01:24 with no failure afterwards.
+Worker console logs contain 30 "Synthetic queue load job finished" lines with
+30 distinct indexes and no index started twice, so no job ran more than once.
+`buddy_runs` is untouched by design (the job performs no database write).
+Gate G1 passes.
 
 ## Gate status
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
 | G0 baseline | passed | clean tree at 0be2c79; 290 tests + 3 skipped locally before changes |
-| G1 P0 | key fix and metrics-api signal live on worker `edge-e29d9f0`; scale-out result appended below | ADR 0012, runbook, Log Analytics counts, in-container measurement, probe results, post-release scaler events |
+| G1 P0 | passed: key fix and metrics-api signal live on worker `edge-e29d9f0`; 30-job backlog scaled 1 -> 3 -> 1 with no duplicate execution | ADR 0012, runbook, Log Analytics counts, in-container measurement, probe results, experiment timeline below |
 | G2 contracts | passed locally | OutboxTopicRegistryTest (unknown topics quarantined), EdgeIdentityTest (cross-client isolation, revocation fails closed), RedisQueueScaleRuleTest |
 | G3 transport | passed locally (fakes) | Cloudflare failure leaves deliveries pending with backoff while local dispatch completes; replay command; DLQ handled Worker-side |
 | G4 dashboard | Worker tests | see cloudflare/buddy-edge test results in the handoff |
