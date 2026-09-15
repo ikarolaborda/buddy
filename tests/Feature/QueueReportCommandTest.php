@@ -33,7 +33,7 @@ class QueueReportCommandTest extends TestCase
         $report = json_decode(Artisan::output(), true);
 
         $this->assertSame(['n' => 3, 'untimed' => 0, 'waiting' => 1], array_intersect_key($report['tasks']['evaluate'], array_flip(['n', 'untimed', 'waiting'])));
-        $this->assertSame(['n' => 2, 'p50' => 4, 'p90' => 4, 'p95' => 4, 'max' => 60], $report['tasks']['evaluate']['queue_wait_s']);
+        $this->assertSame(['n' => 2, 'p50' => 4, 'p90' => 60, 'p95' => 60, 'max' => 60], $report['tasks']['evaluate']['queue_wait_s']);
         $this->assertSame(1, $report['tasks']['council']['untimed']);
 
         $this->assertSame(['n' => 4, 'open' => 1, 'failed' => 1], array_intersect_key($report['runs']['evaluation'], array_flip(['n', 'open', 'failed'])));
@@ -41,12 +41,19 @@ class QueueReportCommandTest extends TestCase
         $this->assertSame(['n' => 4, 'max_concurrent' => 3, 'started_within_60s_of_previous' => 3], $report['runs']['all']);
     }
 
-    public function test_it_accepts_durations_and_rejects_nonsense(): void
+    public function test_it_accepts_durations_and_iso_timestamps_and_rejects_everything_else(): void
     {
         $this->assertSame(0, Artisan::call('buddy:queue:report', ['--since' => '7d']));
         $this->assertStringContainsString('max concurrent 0', Artisan::output());
+        $this->assertSame(0, Artisan::call('buddy:queue:report', ['--since' => '2026-09-14', '--until' => '2026-09-15T00:00:00Z']));
 
         $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => 'yesterday-ish']));
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => 'tomorrow']), 'natural language is not ISO-8601');
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => '24h', '--until' => 'not-a-date']), 'an invalid --until must not fall back to now');
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => '24h', '--until' => '1d']), '--until takes no durations');
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => '0m']));
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => '999999d']));
+        $this->assertSame(1, Artisan::call('buddy:queue:report', ['--since' => '2026-09-15T00:00:00Z', '--until' => '2026-09-15T00:00:00Z']), 'zero-length window');
     }
 
     private function recordRun(BuddyTask $task, string $status, CarbonImmutable $started, ?CarbonImmutable $completed): void

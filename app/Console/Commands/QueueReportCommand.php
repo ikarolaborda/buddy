@@ -21,19 +21,20 @@ use Illuminate\Support\Collection;
 class QueueReportCommand extends Command
 {
     protected $signature = 'buddy:queue:report
-        {--since=24h : Window start as a duration (90m, 24h, 7d) or an ISO-8601 timestamp}
-        {--until= : Window end as an ISO-8601 timestamp; defaults to now}
+        {--since=24h : Window start: a duration before --until (90m, 24h, 7d; at most 400d) or an ISO-8601 timestamp}
+        {--until= : Window end as an ISO-8601 timestamp (2026-09-15T18:00:00Z); defaults to now}
         {--json : Print the report as JSON}';
 
     protected $description = 'Report queue wait, runtime and concurrency for the tasks and runs in a window';
 
     public function handle(): int
     {
-        $until = $this->parse((string) $this->option('until')) ?? CarbonImmutable::now();
-        $since = $this->parse((string) $this->option('since'), $until);
+        $untilOption = trim((string) $this->option('until'));
+        $until = $untilOption === '' ? CarbonImmutable::now() : $this->timestamp($untilOption);
+        $since = $until === null ? null : ($this->duration((string) $this->option('since'), $until) ?? $this->timestamp((string) $this->option('since')));
 
-        if ($since === null || $since->gte($until)) {
-            $this->error('Give --since as a duration (90m, 24h, 7d) or an ISO-8601 timestamp before --until.');
+        if ($until === null || $since === null || $since->gte($until)) {
+            $this->error('Give --since as a duration (90m, 24h, 7d) or an ISO-8601 timestamp before --until, and --until as an ISO-8601 timestamp.');
 
             return self::FAILURE;
         }
@@ -150,6 +151,10 @@ class QueueReportCommand extends Command
     }
 
     /**
+     * Nearest-rank percentiles (the value at rank ceil(p/100 × n)), so a
+     * two-sample [4, 60] reports p95 = 60 rather than hiding the tail; small
+     * samples must be read together with n and max.
+     *
      * @param  Collection<int, int>  $values
      * @return array{n: int, p50: int|null, p90: int|null, p95: int|null, max: int|null}
      */
@@ -157,7 +162,7 @@ class QueueReportCommand extends Command
     {
         $sorted = $values->sort()->values()->all();
         $count = count($sorted);
-        $at = fn (int $percent): ?int => $count === 0 ? null : $sorted[(int) floor($percent / 100 * ($count - 1))];
+        $at = fn (int $percent): ?int => $count === 0 ? null : $sorted[max(0, (int) ceil($percent / 100 * $count) - 1)];
 
         return [
             'n' => $count,
@@ -168,20 +173,39 @@ class QueueReportCommand extends Command
         ];
     }
 
-    protected function parse(string $value, ?CarbonImmutable $relativeTo = null): ?CarbonImmutable
+    /**
+     * Durations are elapsed time on the UTC timeline (a day is 86,400 s), so a
+     * window never stretches or shrinks across a DST change.
+     */
+    protected function duration(string $value, CarbonImmutable $relativeTo): ?CarbonImmutable
     {
-        if ($value === '') {
+        if (preg_match('/^(\d{1,6})([mhd])$/', trim($value), $match) !== 1) {
             return null;
         }
 
-        if (preg_match('/^(\d+)([mhd])$/', $value, $match) === 1) {
-            $base = $relativeTo ?? CarbonImmutable::now();
+        $seconds = (int) $match[1] * match ($match[2]) {
+            'm' => 60,
+            'h' => 3600,
+            default => 86400,
+        };
 
-            return match ($match[2]) {
-                'm' => $base->subMinutes((int) $match[1]),
-                'h' => $base->subHours((int) $match[1]),
-                default => $base->subDays((int) $match[1]),
-            };
+        if ($seconds <= 0 || $seconds > 400 * 86400) {
+            return null;
+        }
+
+        return $relativeTo->subSeconds($seconds);
+    }
+
+    /**
+     * Only ISO-8601 shapes are accepted; Carbon would otherwise happily read
+     * "tomorrow" and report a window nobody asked for.
+     */
+    protected function timestamp(string $value): ?CarbonImmutable
+    {
+        $value = trim($value);
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?)?(Z|[+-]\d{2}:?\d{2})?$/', $value) !== 1) {
+            return null;
         }
 
         try {

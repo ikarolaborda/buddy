@@ -78,7 +78,11 @@ The request named Redis, Kafka and RabbitMQ as candidate "harnesses".
   capacity 5 per replica × worker `maxReplicas` 3 = 15 concurrent
   evaluations, about 90K tokens per minute against the 100K quota, leaving
   room for a council. Both numbers live in Bicep and `config/buddy.php` and
-  are pinned together by tests.
+  are pinned together by tests. This is steady-state sizing (reasoning
+  tokens are already inside the measured completion usage), not a
+  throttling guarantee: synchronized starts can still hit a short Azure
+  window, and a lower reasoning effort shortens runtimes and raises request
+  turnover, so the cap must be recomputed before that lever is pulled.
 - **Shutdown rehearsed.** In the production image with an isolated Redis
   (retry_after shortened to 30 s only there): SIGKILL of a worker holding 6
   evaluation and 1 council synthetic jobs left every reserved entry in Redis;

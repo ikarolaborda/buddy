@@ -275,12 +275,18 @@ the evaluator can now send a reasoning effort (`BUDDY_EVALUATOR_REASONING_EFFORT
 proven by an Http::fake assertion) but production keeps it unset; dependencies
 are current (`docs/releases/2026-09-15-dependency-audit.md`, laravel/ai 0.11).
 
-Founder-facing follow-ups: (1) enable the reasoning effort only after a
-quality-gated CIL replay (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) raise the
-15-evaluation cap only with a higher Azure OpenAI quota; (3) the accepted
-`extract-zip` advisory in the Worker package is due for review by 2026-10-15;
-(4) rollback keeps the all-lane worker and reverts routing through
-`BUDDY_QUEUE_*=default`.
+Founder-facing follow-ups (from the six review evaluations run as the burst,
+Buddy 01M2K6KP…, 01M2K6KX…, 01M2K6M8…, 01M2K6MJ…, 01M2K6MW…, 01M2K6N6…):
+(1) enable the reasoning effort only after a quality-gated CIL replay and
+recompute the cap first (Buddy 01M2K4C8EJ0VAB9AKW07C2ETMP); (2) raise the
+15-evaluation cap only with a higher Azure OpenAI quota; (3) measure the fast
+lane's queue wait under a mixed 15-evaluation load before resizing its
+2-process pool; (4) council transport consolidation onto laravel/ai only
+through a CouncilTransport seam with fixtures, chairman last; (5) add a
+missing-heartbeat alert for the queue-health job; (6) rotate the scaling key
+every 90 days (recipe); (7) the accepted `extract-zip` advisory in the Worker
+package is due for review by 2026-10-15; (8) rollback keeps the all-lane
+worker and reverts routing through `BUDDY_QUEUE_*=default`.
 
 ## Resume and finish procedure
 

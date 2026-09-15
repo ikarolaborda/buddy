@@ -70,7 +70,48 @@ period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
 - Forced-kill rehearsal: `scratchpad/horizon-kill-rehearsal.sh` pattern,
   production image, isolated Redis, `REDIS_QUEUE_RETRY_AFTER=30` only there.
 
+## Operations notes (from the 2026-09-15 reviews)
+
+- **Scaling key.** Rotate `buddy-scaling-metrics-key` every 90 days or on
+  suspected exposure, never per revision: add the new key to the API as a
+  second accepted value, switch the worker rule secret, confirm polls, then
+  retire the old key within 24 hours. The endpoint answers 401 to a bad or
+  missing key and 404 when no key is configured, both with `no-store`.
+- **Queue health detection envelope.** Threshold 300 s + up to 15 min to the
+  next probe + up to 15 min to the next alert evaluation + ingestion and
+  notification: expect about 35 minutes from enqueue for a persistent
+  breach. The job never retries (`replicaRetryLimit 0`) so a degraded exit
+  does not double-log. A probe that cannot start is silent; a
+  missing-heartbeat alert is the open follow-up.
+- **Cap validity.** 5 × 3 = 15 is steady-state sizing for default effort
+  (p50 45–56 s, about 96K TPM at full occupancy before council traffic),
+  not a throttling guarantee. Recompute (2–3 per replica) before enabling a
+  lower reasoning effort. Cap-bound latency shows as queue wait with all
+  local slots busy and no provider 429/backoff; provider-bound latency shows
+  as rising provider duration or throttling.
+
 ## Release record
+
+### 2026-09-15 (second release) — commits bb0d52b, c674d35, 58c7baf, 40eebd9, images `buddy:40eebd9` / `buddy:40eebd9-octane`
+
+- Worker revision `ca-buddy-worker-credit--cap-40eebd9` (18:51:37 UTC, Horizon
+  started; evaluations capacity 5, maxReplicas 3, rule targets 5 / 1), API
+  revision `ca-buddy-api-credit--cap-40eebd9`, four jobs on `buddy:40eebd9`,
+  new job `caj-buddy-queue-health-credit` (cron `*/15 * * * *`, first run
+  Healthy at 18:55:43), alerts deployment `alerts-cap-40eebd9` Succeeded
+  (what-if: three creates, nothing modified): `alert-ca-buddy-worker-credit-memory`,
+  `alert-ca-buddy-worker-credit-scaler-failed`, `alert-buddy-queue-degraded-credit`.
+- Dependencies: commonmark advisories closed, framework 13.32, Octane 2.19,
+  laravel/ai 0.11.2 (Azure via `/openai/v1`, agent timeout honoured).
+- Six real evaluations through the production MCP endpoint, queued
+  18:52:29 to 18:53:18 (the client issues calls sequentially, so about ten
+  seconds apart): every one claimed within 1 s, runtimes 30–80 s, all
+  completed on the new gateway; `buddy:queue:report --since=40m`: 9
+  evaluation runs, none failed, runtime p50 45 s, max concurrent 5 (the
+  per-replica cap; the sixth call arrived after the first had finished, so
+  no scale-out was needed).
+- Forced-kill rehearsal and the structural cap are described in the ADR 0014
+  amendment.
 
 ### 2026-09-15 — commits e049394 + 1ac8dad, images `buddy:1ac8dad` / `buddy:1ac8dad-octane`
 

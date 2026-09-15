@@ -322,7 +322,7 @@ resource queueHealthJob 'Microsoft.App/jobs@2024-03-01' = if (deployOutboxRepair
     configuration: {
       triggerType: 'Schedule'
       replicaTimeout: 120
-      replicaRetryLimit: 1
+      replicaRetryLimit: 0
       scheduleTriggerConfig: {
         cronExpression: '*/15 * * * *'
         parallelism: 1
