@@ -1,0 +1,182 @@
+{
+  // Buddy edge Worker. Two environments: `preview` and `production`.
+  // Deploy only with `--env preview` or `--env production`; the top level carries shared settings.
+  // Secrets (EDGE_SERVICE_KEY) are never in this file. See README.md and infra/cloudflare/README.md.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "buddy-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "BUDDY_TASK_PROGRESS", "class_name": "BuddyTaskProgress" },
+      { "name": "BUDDY_EDGE_BUDGET", "class_name": "BuddyEdgeBudget" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BuddyTaskProgress", "BuddyEdgeBudget"] }
+  ],
+  "vars": {
+    "AZURE_API_BASE": "https://buddy.aerolambda.tech",
+    "ALLOWED_ORIGIN": "https://buddy-edge-preview.<account-subdomain>.workers.dev",
+    "SUPERVISION_ENABLED": "false",
+    "AUTO_RECOVERY_ENABLED": "false",
+    "READ_CACHE_ENABLED": "false",
+    "BROWSER_DIAGNOSTICS_ENABLED": "false",
+    "DAILY_BUDGET_EVENTS": "50000",
+    "DAILY_BUDGET_CALLBACKS": "500",
+    "DAILY_BUDGET_WORKFLOWS": "200",
+    "DAILY_BUDGET_CAPTURES": "10",
+    "MAX_ACTIVE_SOCKETS_PER_TASK": "20"
+  },
+  "env": {
+    "preview": {
+      "name": "buddy-edge-preview",
+      "assets": {
+        "directory": "./public",
+        "binding": "ASSETS",
+        "not_found_handling": "none"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "BUDDY_TASK_PROGRESS", "class_name": "BuddyTaskProgress" },
+          { "name": "BUDDY_EDGE_BUDGET", "class_name": "BuddyEdgeBudget" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["BuddyTaskProgress", "BuddyEdgeBudget"] }
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "BUDDY_EVENTS", "queue": "buddy-events-preview" },
+          { "binding": "BUDDY_ARTIFACT_EVENTS", "queue": "buddy-artifacts-preview" }
+        ],
+        "consumers": [
+          {
+            "queue": "buddy-events-preview",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "buddy-events-dlq-preview",
+            "max_concurrency": 2
+          },
+          {
+            "queue": "buddy-artifacts-preview",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "buddy-artifacts-dlq-preview",
+            "max_concurrency": 2
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "BUDDY_TASK_SUPERVISOR",
+          "name": "buddy-task-supervisor-preview",
+          "class_name": "BuddyTaskSupervisor"
+        }
+      ],
+      "kv_namespaces": [
+        // Placeholder: replace with the id printed by `wrangler kv namespace create BUDDY_READ_CACHE --env preview`.
+        { "binding": "BUDDY_READ_CACHE", "id": "00000000000000000000000000000000" }
+      ],
+      "r2_buckets": [
+        { "binding": "BUDDY_ARTIFACTS", "bucket_name": "buddy-artifacts-preview" }
+      ],
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "AZURE_API_BASE": "https://buddy.aerolambda.tech",
+        "ALLOWED_ORIGIN": "https://buddy-edge-preview.<account-subdomain>.workers.dev",
+        "SUPERVISION_ENABLED": "false",
+        "AUTO_RECOVERY_ENABLED": "false",
+        "READ_CACHE_ENABLED": "false",
+        "BROWSER_DIAGNOSTICS_ENABLED": "false",
+        "DAILY_BUDGET_EVENTS": "50000",
+        "DAILY_BUDGET_CALLBACKS": "500",
+        "DAILY_BUDGET_WORKFLOWS": "200",
+        "DAILY_BUDGET_CAPTURES": "10",
+        "MAX_ACTIVE_SOCKETS_PER_TASK": "20"
+      }
+    },
+    "production": {
+      "name": "buddy-edge-prod",
+      "assets": {
+        "directory": "./public",
+        "binding": "ASSETS",
+        "not_found_handling": "none"
+      },
+      "durable_objects": {
+        "bindings": [
+          { "name": "BUDDY_TASK_PROGRESS", "class_name": "BuddyTaskProgress" },
+          { "name": "BUDDY_EDGE_BUDGET", "class_name": "BuddyEdgeBudget" }
+        ]
+      },
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["BuddyTaskProgress", "BuddyEdgeBudget"] }
+      ],
+      "queues": {
+        "producers": [
+          { "binding": "BUDDY_EVENTS", "queue": "buddy-events-prod" },
+          { "binding": "BUDDY_ARTIFACT_EVENTS", "queue": "buddy-artifacts-prod" }
+        ],
+        "consumers": [
+          {
+            "queue": "buddy-events-prod",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "buddy-events-dlq-prod",
+            "max_concurrency": 2
+          },
+          {
+            "queue": "buddy-artifacts-prod",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "dead_letter_queue": "buddy-artifacts-dlq-prod",
+            "max_concurrency": 2
+          }
+        ]
+      },
+      "workflows": [
+        {
+          "binding": "BUDDY_TASK_SUPERVISOR",
+          "name": "buddy-task-supervisor-prod",
+          "class_name": "BuddyTaskSupervisor"
+        }
+      ],
+      "kv_namespaces": [
+        // Placeholder: replace with the id printed by `wrangler kv namespace create BUDDY_READ_CACHE --env production`.
+        { "binding": "BUDDY_READ_CACHE", "id": "11111111111111111111111111111111" }
+      ],
+      "r2_buckets": [
+        { "binding": "BUDDY_ARTIFACTS", "bucket_name": "buddy-artifacts-prod" }
+      ],
+      "browser": { "binding": "BROWSER" },
+      "vars": {
+        "AZURE_API_BASE": "https://buddy.aerolambda.tech",
+        "ALLOWED_ORIGIN": "https://buddy-edge-prod.<account-subdomain>.workers.dev",
+        "SUPERVISION_ENABLED": "false",
+        "AUTO_RECOVERY_ENABLED": "false",
+        "READ_CACHE_ENABLED": "false",
+        "BROWSER_DIAGNOSTICS_ENABLED": "false",
+        "DAILY_BUDGET_EVENTS": "50000",
+        "DAILY_BUDGET_CALLBACKS": "500",
+        "DAILY_BUDGET_WORKFLOWS": "200",
+        "DAILY_BUDGET_CAPTURES": "10",
+        "MAX_ACTIVE_SOCKETS_PER_TASK": "20"
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+name: Edge Worker
+
+on:
+  push:
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/edge.yml"
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/edge.yml"
+
+jobs:
+  edge:
+    name: buddy-edge typecheck and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/buddy-edge
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: cloudflare/buddy-edge/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test

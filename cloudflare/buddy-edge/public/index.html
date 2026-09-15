@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Buddy task progress</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to task status</a>
+  <header class="topbar">
+    <h1>Buddy task progress</h1>
+    <p class="topbar-sub">Read-only view of one task. Nothing here can change the task.</p>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="card" aria-labelledby="status-heading">
+      <h2 id="status-heading">Status</h2>
+      <p id="status-text" class="status-text" role="status" aria-live="polite" aria-atomic="true">Preparing view…</p>
+      <dl class="facts">
+        <div><dt>Task</dt><dd id="task-id" class="mono">—</dd></div>
+        <div><dt>State</dt><dd id="task-status">—</dd></div>
+        <div><dt>Current phase</dt><dd id="task-phase">—</dd></div>
+        <div><dt>Queue wait</dt><dd id="queue-wait">—</dd></div>
+        <div><dt>Model time</dt><dd id="model-time">—</dd></div>
+        <div><dt>Last authoritative observation</dt><dd id="observed-at">—</dd></div>
+        <div><dt>Last event received</dt><dd id="last-event-at">—</dd></div>
+        <div><dt>Connection</dt><dd id="connection-mode">—</dd></div>
+      </dl>
+      <p id="delay-notice" class="notice notice-warn" hidden>Updates are delayed. The task has not reported recently; this does not mean it failed.</p>
+      <p id="recovery-notice" class="notice" hidden></p>
+      <p id="polling-notice" class="notice" hidden>Live updates are unavailable. Falling back to periodic refresh.</p>
+    </section>
+
+    <section class="card" aria-labelledby="timeline-heading">
+      <h2 id="timeline-heading">Phase timeline</h2>
+      <ol id="timeline" class="timeline" aria-describedby="timeline-help"></ol>
+      <p id="timeline-help" class="help">Use Tab to move between phases. Times are shown in your local time zone.</p>
+      <p id="timeline-empty" class="empty">No phases reported yet.</p>
+    </section>
+
+    <section class="card" aria-labelledby="council-heading">
+      <h2 id="council-heading">Council roster</h2>
+      <p class="help">Shown only when the task reports a council with actual model names and review roles.</p>
+      <table id="council-table" class="council" hidden>
+        <caption class="sr-only">Review roles and the models assigned to them</caption>
+        <thead><tr><th scope="col">Role</th><th scope="col">Model</th></tr></thead>
+        <tbody id="council-body"></tbody>
+      </table>
+      <p id="council-empty" class="empty">No council has started.</p>
+    </section>
+
+    <section class="card" aria-labelledby="events-heading">
+      <h2 id="events-heading">Recent events</h2>
+      <ul id="events" class="events" aria-live="off"></ul>
+      <p id="events-empty" class="empty">No events received yet.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Progress is reported from authoritative task state. Private reasoning and prompts are never shown.</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
