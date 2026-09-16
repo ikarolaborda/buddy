@@ -18,6 +18,11 @@ RUN composer install \
 
 FROM php:8.5-fpm-alpine AS app
 
+# php-fpm's base image stops with SIGQUIT, which neither Horizon nor a shell
+# handles; as PID 1 they drop it and the platform waits out the whole grace
+# period (ADR 0014, amendment 2026-09-16). supervisord handles SIGTERM.
+STOPSIGNAL SIGTERM
+
 RUN apk add --no-cache nginx supervisor libpq-dev $PHPIZE_DEPS \
     && docker-php-ext-install pdo_pgsql pcntl \
     && pecl install redis \

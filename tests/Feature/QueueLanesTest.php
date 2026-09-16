@@ -100,6 +100,8 @@ class QueueLanesTest extends TestCase
         $this->assertStringContainsString("command: ['sh', '/var/www/html/docker/production/horizon-entrypoint.sh']", $bicep);
         $this->assertStringContainsString('HORIZON_SHUTDOWN_GRACE', $bicep);
         $this->assertTrue(is_executable(base_path('docker/production/horizon-entrypoint.sh')));
+        $this->assertStringContainsString('STOPSIGNAL SIGTERM', file_get_contents(base_path('docker/production/Dockerfile')));
+        $this->assertStringContainsString('trap shutdown TERM INT QUIT', file_get_contents(base_path('docker/production/horizon-entrypoint.sh')));
         $this->assertStringContainsString('terminationGracePeriodSeconds: 600', $bicep);
         $this->assertStringNotContainsString("valueLocation: 'pending'", $bicep);
     }

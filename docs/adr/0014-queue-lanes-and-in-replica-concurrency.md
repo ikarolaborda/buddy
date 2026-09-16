@@ -103,55 +103,71 @@ The request named Redis, Kafka and RabbitMQ as candidate "harnesses".
   `Http::fake` assertion, and an unset value leaves the request untouched.
   Enabling it in production waits for a CIL replay of recommendation quality.
 
-## Amendment (2026-09-16): bounded shutdown wrapper, after Buddy review 01M2MHCXAJH09B7QF75MGFF5V1
+## Amendment (2026-09-16): stop signal and bounded shutdown, after Buddy reviews 01M2MHCXAJH09B7QF75MGFF5V1 and 01M2MJ9KBV2TVVDZFPDT46C8DA
 
-**Observation.** After every worker stop on 2026-09-15 (the revision switches and the KEDA scale-in
-at 20:16:55Z) the stopped replica logged one Redis `Connection refused` per second for the whole
-600 s grace period and was then killed with reason `ManuallyStopped`. Redis itself stayed healthy.
-Container Apps severs the terminating replica's network path to Redis at the moment it sends
-SIGTERM. Horizon's `MasterSupervisor::terminate()` begins with `longestActiveTimeout()`, a Redis
-read; the exception is caught by the master loop, the pending terminate signal is retried every
-second, the supervisors and workers are never signalled, and the replica lives to the grace
-deadline. Reproduced in the production image: Redis stopped, then SIGTERM, still running after
-60 s; Redis reachable, exit in 18 s.
+**Observation.** After every worker stop on 2026-09-15 and 2026-09-16 (revision switches and
+KEDA scale-ins) the stopped replica logged one Redis `Connection refused` per second for exactly
+the 600 s grace period and was then killed with reason `ManuallyStopped`. Redis itself stayed
+healthy. Container Apps severs the terminating replica's network path to Redis at the moment it
+issues the stop.
 
-**Decision.** Production runs Horizon under `docker/production/horizon-entrypoint.sh` (Bicep
-command `sh /var/www/html/docker/production/horizon-entrypoint.sh`). The wrapper starts Horizon
-in its own process group (`setsid`), forwards SIGTERM once, waits `HORIZON_SHUTDOWN_GRACE`
-seconds (240, equal to the evaluator's provider timeout so any single in-flight provider call can
-finish), then SIGKILLs the whole group. Later signals do not restart the deadline. It logs
-`horizon-entrypoint: event=started|shutdown_started|shutdown_forced|exited ...` with the revision
-and replica names. The Container Apps grace stays 600 s as the fallback if the wrapper fails.
+**Mechanism, two layers.** The production traces of the stopped replicas (wrapper-less
+`chair-9ee7738`, 07:38:49 to 07:48:49Z, and the first wrapper revision `linger-41826c8`) all loop
+in `MasterSupervisor::loop() -> processPendingCommands() -> RedisHorizonCommandQueue::pending()`,
+never in `terminate()`: the process never received a stop signal. The image inherits
+`STOPSIGNAL SIGQUIT` from `php:8.5-fpm-alpine`; the platform sends that signal to PID 1, and a
+PID 1 without a QUIT handler (Horizon handles TERM, USR1, USR2 and CONT; a shell traps nothing
+by default) drops it, so nothing happened until the SIGKILL at the grace deadline. The second
+layer was proven in the production image with an explicit SIGTERM: `MasterSupervisor::terminate()`
+begins with `longestActiveTimeout()`, a Redis read, the exception is caught by the master loop and
+the supervisors and workers are never signalled (Redis stopped, then SIGTERM: still running after
+60 s; Redis reachable: exit in 18 s). The first day's analysis saw only the second layer because
+the Docker reproduction used `docker kill -s TERM`, not the image's stop signal.
 
-**What it is not.** Containment, not a delivery fix. A job still running at the deadline is
-killed, and even a job that finished cannot ack Redis because Redis is unreachable. Recovery is
-PostgreSQL's: a finished task is Completed, and the Redis redelivery (`retry_after` 2400 s,
-counted from the reservation, not from the kill) hits `isTerminal()` and is a no-op; an unfinished
-task's claim lease (1200 s) expires, then either the redelivery (attempt 2 of 3) re-claims and
-re-runs the evaluation or the five-minute outbox relay's `reapExpiredLeases()` marks it Failed
-once the lease is more than one lease period expired, so about 2400 to 2700 s after the claim.
-Councils (lease 2400 s, renewed by heartbeat while they run) never fit the budget and follow the
-same path about 4800 to 5100 s after their last heartbeat. That was already
-the fate of a job killed at 600 s; the wrapper moves the cut from 600 to 240 s, and only when the
-platform has severed Redis. Whether PostgreSQL and Azure OpenAI egress survive termination is
-unproven; the wrapper events and the task outcomes of the next real stops are the evidence to
-collect.
+**Decision.** `docker/production/Dockerfile` sets `STOPSIGNAL SIGTERM` (supervisord and Horizon
+both handle it), and production runs Horizon under `docker/production/horizon-entrypoint.sh`
+(Bicep command `sh /var/www/html/docker/production/horizon-entrypoint.sh`). The wrapper starts
+Horizon in its own process group (`setsid`), traps TERM, INT and QUIT once (a bootstrap trap
+remembers a signal that arrives before Horizon is up, later signals cannot restart the deadline),
+forwards SIGTERM to the master and directly to every `horizon:work` process, and then either ends
+when no worker has been alive for `HORIZON_SHUTDOWN_SETTLE` seconds (10) or kills the whole
+group at `HORIZON_SHUTDOWN_GRACE` seconds (240, the evaluator's provider timeout). The workers
+lose Redis as well: an idle worker exits within a second (lost connection), a busy one finishes
+its current job and exits right after because it cannot ack, so an idle replica stops in about
+ten seconds and a busy one when its jobs end. Worker output travels through the supervisor,
+which stops polling its pipes once Redis is gone, so the last lines a job logs on a severed
+replica never reach the console; PostgreSQL is the only record of what it did. When Redis is
+reachable Horizon drains on its own first and the wrapper exits with its status. It logs `horizon-entrypoint:
+event=started|shutdown_started|workers_drained|shutdown_forced|exited ...` with the revision and
+replica names. The Container Apps grace stays 600 s as the fallback if the wrapper fails.
+
+**What it is not.** Containment, not a delivery fix. A finished job cannot ack Redis because
+Redis is unreachable, and a job still running at the budget is killed. Recovery is PostgreSQL's:
+a finished task is Completed, and the Redis redelivery (`retry_after` 2400 s, counted from the
+reservation, not from the kill) hits `isTerminal()` and is a no-op; an unfinished task's claim
+lease (1200 s) expires, then either the redelivery (attempt 2 of 3) re-claims and re-runs the
+evaluation or the five-minute outbox relay's `reapExpiredLeases()` marks it Failed once the lease
+is more than one lease period expired, so about 2400 to 2700 s after the claim. Councils (lease
+2400 s, renewed by heartbeat while they run) never fit the budget and follow the same path about
+4800 to 5100 s after their last heartbeat. That was already the fate of a job killed at 600 s.
+Whether PostgreSQL and Azure OpenAI egress survive termination is unproven; the wrapper events
+and the task outcomes of the next real stops are the evidence to collect.
 
 **Rejected.** Subclassing `MasterSupervisor`: `HorizonCommand` instantiates it directly, so there
 is no container binding, `Supervisor::terminate()` reads Redis too, and it is version-sensitive.
 Lowering the platform grace alone: loses the healthy 600 s drain window, gives no telemetry and
-still depends on the platform kill.
+still depends on the platform kill. Fixing only the stop signal: Horizon would then stall in
+`terminate()` on the severed Redis for the whole grace period.
 
-**Evidence (production image, `HORIZON_SHUTDOWN_GRACE=20` for speed).** Redis unreachable:
-forced exit at 20 s, status 137, all 14 Horizon processes in the master's group. Redis reachable
-with five running jobs: graceful exit in 18 s, status 0, reserved set drained. Second SIGTERM at
-+8 s: still 20 s. SIGTERM one second after start, and SIGTERM twice within the first 300 ms
-(before Horizon is up): exit within 2 s, status 0. Horizon exiting by itself (status 1) and the
-master being SIGKILLed while workers run: the wrapper exits at once with the child's status and
+**Evidence (production image, `docker stop`, budgets shortened for speed).** Redis unreachable,
+idle: `workers_drained` and exit in 10 s, status 137. Redis severed while five 40 s jobs run:
+exit in 46 s, after the jobs. Redis reachable with five running jobs: graceful exit in 18 s,
+status 0, reserved set drained. Second signal at +8 s: no restart of the deadline. SIGQUIT:
+handled like SIGTERM. Signal one second after start, and twice within the first 300 ms: exit
+within 3 s, status 0. Horizon exiting by itself (status 1) and the master being SIGKILLed while
+workers run: the wrapper exits at once with the child's status and
 `detail=horizon_exited_without_signal`. An invalid budget value falls back to 240 with a
-`startup_warning` event. The wrapper remembers a SIGTERM that arrives before its handler is
-installed and waits up to five seconds for `setsid` to make Horizon the group leader before
-falling back to killing the master alone.
+`startup_warning` event.
 
 ## Consequences
 

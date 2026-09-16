@@ -93,16 +93,19 @@ period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
 ## Bounded shutdown (2026-09-16)
 
 The worker command is `sh /var/www/html/docker/production/horizon-entrypoint.sh`, not
-`php artisan horizon` (ADR 0014, amendment 2026-09-16). Container Apps severs Redis when it
-stops a replica and Horizon then never signals its workers; the wrapper forwards SIGTERM, waits
-`HORIZON_SHUTDOWN_GRACE` seconds (240) and kills the Horizon process group.
+`php artisan horizon`, and the image sets `STOPSIGNAL SIGTERM` (ADR 0014, amendment 2026-09-16).
+Until then the php-fpm base image's SIGQUIT was dropped by PID 1 and no stop ever began; and
+Container Apps severs Redis when it stops a replica, which stalls Horizon's own terminate(). The
+wrapper forwards SIGTERM to the master and the workers, ends once no worker has been alive for
+`HORIZON_SHUTDOWN_SETTLE` seconds (10), and otherwise kills the Horizon process group at
+`HORIZON_SHUTDOWN_GRACE` seconds (240).
 
 Verify a stop (revision switch or scale-in) with the wrapper events next to the platform events:
 
 ```kusto
 ContainerAppConsoleLogs_CL
 | where ContainerAppName_s == 'ca-buddy-worker-credit' and Log_s contains 'horizon-entrypoint:'
-| project TimeGenerated, RevisionName_s, ReplicaName_s, Log_s
+| project TimeGenerated, RevisionName_s, Log_s
 | order by TimeGenerated desc
 ```
 
@@ -114,10 +117,17 @@ ContainerAppSystemLogs_CL
 | order by TimeGenerated desc
 ```
 
-Expected: `event=exited` within the budget plus a few seconds of `shutdown_started`;
-`forced=1 status=137` whenever Redis was severed (the normal Azure case), `forced=0 status=0`
-when Horizon drained on its own; no ten-minute tail of Redis errors; the restart alert stays
-quiet (an exit during deprovisioning is not a restart). For every task that was running on the
+The console table has no replica column; the replica name is inside `Log_s`. The platform's
+`ContainerTerminated` event is stamped when the stop is issued, not when the process exits, so the
+process exit time is the wrapper's `event=exited` line (or, before the wrapper, the last log line).
+
+Expected: `event=exited` within `HORIZON_SHUTDOWN_SETTLE` plus a few seconds of
+`shutdown_started` for an idle replica, within the running jobs' remaining time for a busy one,
+and never later than the budget; `workers_drained` then `forced=1 status=137` whenever Redis was
+severed (the normal Azure case), `forced=0 status=0` when Horizon drained on its own; no
+ten-minute tail of Redis errors; the restart alert stays quiet (an exit during deprovisioning is
+not a restart). A job's own log lines from a severed replica are lost (the supervisor stops
+draining the worker pipes), so judge the work by PostgreSQL. For every task that was running on the
 stopped replica, check its final PostgreSQL state after `retry_after` (2400 s): Completed, or
 re-run by the redelivery, or Failed by the lease reaper. Rollback: set the worker command back
 to `['php', 'artisan', 'horizon']` through `az containerapp update --yaml`; the wrapper is only
