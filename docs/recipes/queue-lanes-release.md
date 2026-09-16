@@ -135,6 +135,29 @@ a file in the image, so no image change is needed.
 
 ## Release record
 
+### 2026-09-16 — commits 41826c8, c77bf1a, 105ea05, images `buddy:105ea05` / `buddy:105ea05-octane`
+
+Bounded shutdown (ADR 0014, amendment 2026-09-16). Worker revisions `linger-41826c8`,
+`linger-c77bf1a` and `linger-105ea05` (command `sh /var/www/html/docker/production/horizon-entrypoint.sh`,
+`HORIZON_SHUTDOWN_GRACE=240`), API `linger-105ea05`, five jobs on `buddy:105ea05`, M5P at 105ea05.
+
+- Diagnosis from production traces: every stopped replica looped in Horizon's command loop, never in
+  `terminate()`; the image's `STOPSIGNAL SIGQUIT` (from php-fpm) was dropped by PID 1. The wrapper-less
+  revision `chair-9ee7738` ran exactly 600 s of Redis errors after its 07:38:49Z stop; the first two
+  wrapper revisions (still on the SIGQUIT image) showed no `shutdown_started` event at all.
+- Fix: `STOPSIGNAL SIGTERM` in the image, wrapper traps TERM/INT/QUIT, signals workers directly,
+  `workers_drained` settle of 10 s, group kill at 240 s.
+- Production proof on `linger-105ea05` (synthetic 16 × 60 s on the evaluations lane, KEDA scale-out
+  to 3 at 08:19:06Z, `SuccessfulRescale` down to 1 at 08:25:23Z, `ContainerTerminated` for both
+  extra replicas at 08:25:25Z): `shutdown_started` 08:25:25Z on both; replica fvmgd/r6dmp pair
+  ended with `workers_drained`, `shutdown_forced` and `exited status=137 forced=1` at 10 s and 27 s
+  after the signal. Redis was severed at the stop as before (the forced path is the expected Azure
+  outcome). The last SIGQUIT-image replica, stopped by the switch at 08:16:44Z, logged 597 Redis
+  errors until 08:26:45Z: exactly the 600 s grace, for the last time.
+- Still open: whether PostgreSQL and Azure OpenAI egress survive termination (no real evaluation
+  was in flight on a stopped replica during the proof), and the recovery of a task interrupted at
+  the budget (never exercised, same fate as before the change).
+
 ### 2026-09-15 (second release) — commits bb0d52b, c674d35, 58c7baf, 40eebd9, images `buddy:40eebd9` / `buddy:40eebd9-octane`
 
 - Worker revision `ca-buddy-worker-credit--cap-40eebd9` (18:51:37 UTC, Horizon
