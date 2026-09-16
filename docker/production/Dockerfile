@@ -39,6 +39,7 @@ COPY --from=vendor /usr/bin/composer /usr/bin/composer
 RUN cp docker/production/php.ini "$PHP_INI_DIR/conf.d/99-buddy.ini" \
     && cp docker/production/nginx.conf /etc/nginx/http.d/default.conf \
     && cp docker/production/supervisord.conf /etc/supervisord.conf \
+    && chmod +x docker/production/horizon-entrypoint.sh \
     && rm -f bootstrap/cache/*.php \
     && composer dump-autoload --optimize --classmap-authoritative \
     && php artisan package:discover --ansi \

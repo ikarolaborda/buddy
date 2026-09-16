@@ -30,7 +30,7 @@ services:
       - REDIS_HOST=redis
     networks:
       - qdrant-memory_default
-    command: ["php", "artisan", "horizon"]
+    command: ["sh", "docker/production/horizon-entrypoint.sh"]
 
   redis:
     image: redis:7-alpine

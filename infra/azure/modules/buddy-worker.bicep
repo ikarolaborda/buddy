@@ -58,6 +58,12 @@ param scalingMetricsUrl string = ''
 // for a council. Raise either number only with a higher provider quota.
 param workerEvaluationCapacity int = 5
 param workerMaxReplicas int = 3
+
+// Seconds the shutdown wrapper waits for Horizon after SIGTERM before killing
+// the process group. Equal to the evaluator's provider timeout so any single
+// in-flight provider call can finish; a council never fits and is recovered
+// through its PostgreSQL lease (ADR 0014, bounded shutdown).
+param horizonShutdownGraceSeconds int = 240
 param workerCouncilCapacity int = 1
 param workerFastCapacity int = 2
 
@@ -287,7 +293,10 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'buddy-worker'
           image: '${acrLoginServer}/buddy:${imageTag}'
-          command: ['php', 'artisan', 'horizon']
+          // Bounded shutdown wrapper (docker/production/horizon-entrypoint.sh):
+          // the platform severs Redis at termination and Horizon alone then
+          // waits out the whole grace period.
+          command: ['sh', '/var/www/html/docker/production/horizon-entrypoint.sh']
           resources: {
             cpu: json('1.0')
             memory: '2Gi'
@@ -295,6 +304,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
           env: concat([
             { name: 'APP_ENV', value: 'production' }
             { name: 'CONTAINER_ROLE', value: 'worker' }
+            { name: 'HORIZON_SHUTDOWN_GRACE', value: string(horizonShutdownGraceSeconds) }
             { name: 'BUDDY_WORKERS_EVALUATIONS', value: string(workerEvaluationCapacity) }
             { name: 'BUDDY_WORKERS_COUNCIL', value: string(workerCouncilCapacity) }
             { name: 'BUDDY_WORKERS_FAST', value: string(workerFastCapacity) }

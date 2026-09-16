@@ -97,7 +97,9 @@ class QueueLanesTest extends TestCase
         $this->assertStringContainsString('targetValue: string(workerEvaluationCapacity)', $bicep);
         $this->assertStringContainsString("valueLocation: 'scaling.council'", $bicep);
         $this->assertStringContainsString('targetValue: string(workerCouncilCapacity)', $bicep);
-        $this->assertStringContainsString("command: ['php', 'artisan', 'horizon']", $bicep);
+        $this->assertStringContainsString("command: ['sh', '/var/www/html/docker/production/horizon-entrypoint.sh']", $bicep);
+        $this->assertStringContainsString('HORIZON_SHUTDOWN_GRACE', $bicep);
+        $this->assertTrue(is_executable(base_path('docker/production/horizon-entrypoint.sh')));
         $this->assertStringContainsString('terminationGracePeriodSeconds: 600', $bicep);
         $this->assertStringNotContainsString("valueLocation: 'pending'", $bicep);
     }

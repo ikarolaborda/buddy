@@ -90,6 +90,39 @@ period (Buddy review 01M2K4BJ87D0DEYT2XC94BWJR2).
   local slots busy and no provider 429/backoff; provider-bound latency shows
   as rising provider duration or throttling.
 
+## Bounded shutdown (2026-09-16)
+
+The worker command is `sh /var/www/html/docker/production/horizon-entrypoint.sh`, not
+`php artisan horizon` (ADR 0014, amendment 2026-09-16). Container Apps severs Redis when it
+stops a replica and Horizon then never signals its workers; the wrapper forwards SIGTERM, waits
+`HORIZON_SHUTDOWN_GRACE` seconds (240) and kills the Horizon process group.
+
+Verify a stop (revision switch or scale-in) with the wrapper events next to the platform events:
+
+```kusto
+ContainerAppConsoleLogs_CL
+| where ContainerAppName_s == 'ca-buddy-worker-credit' and Log_s contains 'horizon-entrypoint:'
+| project TimeGenerated, RevisionName_s, ReplicaName_s, Log_s
+| order by TimeGenerated desc
+```
+
+```kusto
+ContainerAppSystemLogs_CL
+| where ContainerAppName_s == 'ca-buddy-worker-credit'
+  and Reason_s in ('ContainerTerminated', 'SuccessfulRescale', 'RevisionDeactivating')
+| project TimeGenerated, Reason_s, ReplicaName_s, Log_s
+| order by TimeGenerated desc
+```
+
+Expected: `event=exited` within the budget plus a few seconds of `shutdown_started`;
+`forced=1 status=137` whenever Redis was severed (the normal Azure case), `forced=0 status=0`
+when Horizon drained on its own; no ten-minute tail of Redis errors; the restart alert stays
+quiet (an exit during deprovisioning is not a restart). For every task that was running on the
+stopped replica, check its final PostgreSQL state after `retry_after` (2400 s): Completed, or
+re-run by the redelivery, or Failed by the lease reaper. Rollback: set the worker command back
+to `['php', 'artisan', 'horizon']` through `az containerapp update --yaml`; the wrapper is only
+a file in the image, so no image change is needed.
+
 ## Release record
 
 ### 2026-09-15 (second release) — commits bb0d52b, c674d35, 58c7baf, 40eebd9, images `buddy:40eebd9` / `buddy:40eebd9-octane`
