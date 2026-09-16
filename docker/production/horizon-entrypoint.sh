@@ -20,11 +20,36 @@ log() {
     echo "horizon-entrypoint: $1 $IDENT" >&2
 }
 
+case "$GRACE" in
+    ''|*[!0-9]*)
+        log "event=startup_warning detail=invalid_grace value=$GRACE using=240"
+        GRACE=240
+        ;;
+esac
+
+# A stop that arrives before Horizon is running is remembered here and served
+# once the real handler is installed; without this an early SIGTERM would kill
+# the wrapper and orphan Horizon.
+PENDING=0
+trap 'PENDING=1' TERM INT
+
 # setsid gives Horizon its own process group so the forced path can kill the
 # supervisors and workers together, not only the master.
 setsid php artisan horizon "$@" &
 CHILD=$!
-PGID=$(sed 's/.*) //' "/proc/$CHILD/stat" 2>/dev/null | awk '{print $3}')
+
+group_of() {
+    sed 's/.*) //' "/proc/$1/stat" 2>/dev/null | awk '{print $3}'
+}
+
+# The child becomes group leader only once setsid has run; give it a moment.
+PGID=$(group_of "$CHILD")
+tries=0
+while [ "$PGID" != "$CHILD" ] && [ "$tries" -lt 50 ] && kill -0 "$CHILD" 2>/dev/null; do
+    sleep 0.1
+    tries=$((tries + 1))
+    PGID=$(group_of "$CHILD")
+done
 
 if [ "$PGID" != "$CHILD" ]; then
     log "event=startup_warning detail=horizon_not_group_leader pid=$CHILD pgid=${PGID:-unknown}"
@@ -62,6 +87,10 @@ shutdown() {
 }
 
 trap shutdown TERM INT
+
+if [ "$PENDING" -eq 1 ]; then
+    shutdown
+fi
 
 wait "$CHILD"
 STATUS=$?

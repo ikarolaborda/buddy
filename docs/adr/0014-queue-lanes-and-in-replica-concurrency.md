@@ -125,11 +125,13 @@ and replica names. The Container Apps grace stays 600 s as the fallback if the w
 
 **What it is not.** Containment, not a delivery fix. A job still running at the deadline is
 killed, and even a job that finished cannot ack Redis because Redis is unreachable. Recovery is
-PostgreSQL's: a finished task is Completed, and the Redis redelivery after `retry_after` (2400 s)
-hits `isTerminal()` and is a no-op; an unfinished task's claim lease (1200 s) expires, then either
-the redelivery (attempt 2 of 3) re-claims and re-runs the evaluation or the five-minute outbox
-relay's `reapExpiredLeases()` marks it Failed once the lease is more than one lease period
-expired. Councils (lease 2400 s) never fit the budget and follow the same path. That was already
+PostgreSQL's: a finished task is Completed, and the Redis redelivery (`retry_after` 2400 s,
+counted from the reservation, not from the kill) hits `isTerminal()` and is a no-op; an unfinished
+task's claim lease (1200 s) expires, then either the redelivery (attempt 2 of 3) re-claims and
+re-runs the evaluation or the five-minute outbox relay's `reapExpiredLeases()` marks it Failed
+once the lease is more than one lease period expired, so about 2400 to 2700 s after the claim.
+Councils (lease 2400 s, renewed by heartbeat while they run) never fit the budget and follow the
+same path about 4800 to 5100 s after their last heartbeat. That was already
 the fate of a job killed at 600 s; the wrapper moves the cut from 600 to 240 s, and only when the
 platform has severed Redis. Whether PostgreSQL and Azure OpenAI egress survive termination is
 unproven; the wrapper events and the task outcomes of the next real stops are the evidence to
@@ -142,8 +144,14 @@ still depends on the platform kill.
 
 **Evidence (production image, `HORIZON_SHUTDOWN_GRACE=20` for speed).** Redis unreachable:
 forced exit at 20 s, status 137, all 14 Horizon processes in the master's group. Redis reachable
-with five running jobs: graceful exit in 16 s, status 0, reserved set drained. Second SIGTERM at
-+8 s: still 20 s. SIGTERM one second after start: exit in 1 s.
+with five running jobs: graceful exit in 18 s, status 0, reserved set drained. Second SIGTERM at
++8 s: still 20 s. SIGTERM one second after start, and SIGTERM twice within the first 300 ms
+(before Horizon is up): exit within 2 s, status 0. Horizon exiting by itself (status 1) and the
+master being SIGKILLed while workers run: the wrapper exits at once with the child's status and
+`detail=horizon_exited_without_signal`. An invalid budget value falls back to 240 with a
+`startup_warning` event. The wrapper remembers a SIGTERM that arrives before its handler is
+installed and waits up to five seconds for `setsid` to make Horizon the group leader before
+falling back to killing the master alone.
 
 ## Consequences
 
