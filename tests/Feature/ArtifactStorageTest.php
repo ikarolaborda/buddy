@@ -505,18 +505,18 @@ class ArtifactStorageTest extends TestCase
 
         $this->artisan('buddy:artifacts:cleanup --dry-run')
             ->assertSuccessful()
-            ->expectsOutputToContain('Expired 0 reservation(s), retired 0 artifact(s), re-queued 0 purge(s), swept 0 staging object(s) (dry run)');
+            ->expectsOutputToContain('Expired 0 reservation(s), retired 0 artifact(s), forgot 0 inline artifact(s), re-queued 0 purge(s), swept 0 staging object(s) (dry run)');
 
         $this->travel(301)->seconds();
         $this->artisan('buddy:artifacts:cleanup --dry-run')
             ->assertSuccessful()
-            ->expectsOutputToContain('Expired 1 reservation(s), retired 0 artifact(s), re-queued 0 purge(s), swept 1 staging object(s) (dry run)');
+            ->expectsOutputToContain('Expired 1 reservation(s), retired 0 artifact(s), forgot 0 inline artifact(s), re-queued 0 purge(s), swept 1 staging object(s) (dry run)');
         $this->assertSame('reserved', $upload->fresh()->status);
         $this->assertTrue($this->store->has($upload->staging_key));
 
         $this->artisan('buddy:artifacts:cleanup')
             ->assertSuccessful()
-            ->expectsOutputToContain('Expired 1 reservation(s), retired 0 artifact(s), re-queued 0 purge(s), swept 1 staging object(s).');
+            ->expectsOutputToContain('Expired 1 reservation(s), retired 0 artifact(s), forgot 0 inline artifact(s), re-queued 0 purge(s), swept 1 staging object(s).');
         $this->assertSame('expired', $upload->fresh()->status);
         $this->assertFalse($this->store->has($upload->staging_key));
         $this->assertSame(0, (int) BuddyArtifactQuota::sum('reserved_bytes'));
@@ -526,14 +526,14 @@ class ArtifactStorageTest extends TestCase
         $this->travel(31)->days();
         $this->artisan('buddy:artifacts:cleanup')
             ->assertSuccessful()
-            ->expectsOutputToContain('Expired 0 reservation(s), retired 1 artifact(s), re-queued 0 purge(s)');
+            ->expectsOutputToContain('Expired 0 reservation(s), retired 1 artifact(s), forgot 0 inline artifact(s), re-queued 0 purge(s)');
         $this->assertSame('deleted', $artifact->fresh()->storage_status);
         $this->assertNotNull($artifact->fresh()->deleted_at);
         Queue::assertPushed(PurgeArtifactObjectJob::class, 1);
 
         $this->artisan('buddy:artifacts:cleanup')
             ->assertSuccessful()
-            ->expectsOutputToContain('Expired 0 reservation(s), retired 0 artifact(s), re-queued 0 purge(s)');
+            ->expectsOutputToContain('Expired 0 reservation(s), retired 0 artifact(s), forgot 0 inline artifact(s), re-queued 0 purge(s)');
 
         $this->travel(2)->days();
         $this->artisan('buddy:artifacts:cleanup')

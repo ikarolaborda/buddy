@@ -349,6 +349,34 @@ final class ArtifactStorageService
         return $artifact;
     }
 
+    /*
+     * The same retirement for an artifact whose bytes are in the content column
+     * rather than in an object. delete() cannot do these: it refuses anything
+     * without storage, which is what left inline artifacts outside retention
+     * altogether while object-backed ones expired after artifact_days.
+     *
+     * storage_status stays null because there was never an object, which also
+     * keeps the row out of the unpurged() sweep - there is nothing to purge,
+     * and dispatching a job to look for it would only fail.
+     */
+    public function forget(BuddyArtifact $artifact): BuddyArtifact
+    {
+        if ($this->hasStorage($artifact)) {
+            throw ArtifactStorageException::notFound();
+        }
+
+        if ($artifact->deleted_at !== null) {
+            return $artifact;
+        }
+
+        $artifact->forceFill([
+            'deleted_at' => now(),
+            'content' => self::DELETED_CONTENT,
+        ])->save();
+
+        return $artifact;
+    }
+
     /**
      * @return array<string, mixed>
      */

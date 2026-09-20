@@ -454,10 +454,18 @@ class RemoteMcpHandler
          */
         $allowed = array_map(static fn (ArtifactType $t): string => $t->value, ArtifactType::cases());
 
+        /*
+         * The size limit mirrors AttachArtifactRequest. Without it this surface
+         * accepted content of any length straight into the content column,
+         * where nothing bounded it: inline artifacts are not chunked, not
+         * uploaded as objects, and until the retention sweep learned about them
+         * they were never expired either. The REST surface has always capped it
+         * at the same figure; this was the one that drifted.
+         */
         $validated = Validator::validate($args, [
             'task_id' => ['required', 'string'],
             'type' => ['required', 'string', Rule::enum(ArtifactType::class)],
-            'content' => ['required', 'string'],
+            'content' => ['required', 'string', 'max:100000'],
             'metadata' => ['sometimes', 'array'],
         ], [
             'type.enum' => 'The type must be one of: '.implode(', ', $allowed).'.',

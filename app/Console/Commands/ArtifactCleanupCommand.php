@@ -27,13 +27,15 @@ class ArtifactCleanupCommand extends Command
 
         $expired = $this->each($this->staleReservations(), fn (BuddyArtifactUpload $upload) => $storage->expire($upload), $dry);
         $retired = $this->each($this->pastRetention(), fn (BuddyArtifact $artifact) => $storage->delete($artifact), $dry);
+        $forgotten = $this->each($this->inlinePastRetention(), fn (BuddyArtifact $artifact) => $storage->forget($artifact), $dry);
         $requeued = $this->each($this->unpurged(), fn (BuddyArtifact $artifact) => PurgeArtifactObjectJob::dispatch($artifact->id), $dry);
         $swept = $this->each($this->staleStaging(), fn (BuddyArtifactUpload $upload) => $storage->deleteQuietly($upload->staging_key), $dry);
 
         $this->info(sprintf(
-            'Expired %d reservation(s), retired %d artifact(s), re-queued %d purge(s), swept %d staging object(s)%s.',
+            'Expired %d reservation(s), retired %d artifact(s), forgot %d inline artifact(s), re-queued %d purge(s), swept %d staging object(s)%s.',
             $expired,
             $retired,
+            $forgotten,
             $requeued,
             $swept,
             $dry ? ' (dry run)' : '',
@@ -78,6 +80,22 @@ class ArtifactCleanupCommand extends Command
             ->whereNotNull('storage_status')
             ->whereNull('deleted_at')
             ->where('retention_until', '<', now());
+    }
+
+    /*
+     * Inline artifacts carry no retention_until - only the upload path sets one
+     * - so age is measured from created_at. storage_status null is what makes an
+     * artifact inline, and it is also the only thing separating this sweep from
+     * pastRetention(), which must keep owning every artifact that has an object.
+     */
+    private function inlinePastRetention(): Builder
+    {
+        return BuddyArtifact::query()
+            ->whereNull('storage_status')
+            ->whereNull('deleted_at')
+            ->where('created_at', '<', now()->subDays(
+                max(1, (int) config('buddy.edge.retention.inline_artifact_days', 30)),
+            ));
     }
 
     private function unpurged(): Builder

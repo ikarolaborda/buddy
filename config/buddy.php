@@ -403,6 +403,15 @@ return [
 
         'retention' => [
             'artifact_days' => (int) env('BUDDY_EDGE_ARTIFACT_RETENTION_DAYS', 30),
+            /*
+             * Artifacts whose bytes live in the content column rather than in
+             * an object. They had no retention at all until now, because the
+             * sweep keys on storage_status and these never have one. Same
+             * default as artifact_days so the two paths expire alike, but its
+             * own knob: this one is measured from created_at, since an inline
+             * artifact has no retention_until to count from.
+             */
+            'inline_artifact_days' => (int) env('BUDDY_INLINE_ARTIFACT_RETENTION_DAYS', 30),
             'quarantine_days' => (int) env('BUDDY_EDGE_QUARANTINE_DAYS', 7),
             'upload_url_seconds' => (int) env('BUDDY_EDGE_UPLOAD_URL_SECONDS', 300),
             'download_url_seconds' => (int) env('BUDDY_EDGE_DOWNLOAD_URL_SECONDS', 120),

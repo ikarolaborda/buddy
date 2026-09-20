@@ -97,6 +97,11 @@ You can attach multiple artifacts. Do this BEFORE requesting evaluation. Attachi
 to a task whose evaluation is already running returns a `warning` saying so; the
 artifact is kept, but that run will most likely not see it.
 
+Content is capped at 100,000 characters on both surfaces. Artifact content is
+retained for `BUDDY_INLINE_ARTIFACT_RETENTION_DAYS` (30 by default) and then
+replaced with a tombstone; the artifact row, its type and its link to the task
+survive, so the record of what was supplied remains after the bytes are gone.
+
 ### Step 3: Request Evaluation
 
 Call `buddy.evaluate_task` (MCP) or `POST /api/buddy/tasks/{id}/evaluate` (REST).

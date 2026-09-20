@@ -293,6 +293,50 @@ class RemoteMcpTest extends TestCase
         $this->assertCount(1, $task->artifacts, 'The evidence must be on the task before the evaluation starts.');
     }
 
+    public function test_attach_artifact_caps_content_like_the_rest_surface(): void
+    {
+        // AttachArtifactRequest has always capped this at 100000. The MCP
+        // surface had no limit at all, so content of any size went straight
+        // into the content column, which is neither chunked nor offloaded.
+        Queue::fake();
+
+        $submit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 47, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Artifact size parity',
+                'problem_type' => 'other',
+                'defer_evaluation' => true,
+            ]],
+        ]);
+        $taskId = json_decode($submit->json('result.content.0.text'), true)['task_id'];
+
+        $oversized = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 48, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.attach_artifact', 'arguments' => [
+                'task_id' => $taskId,
+                'type' => 'log',
+                'content' => str_repeat('a', 100001),
+            ]],
+        ]);
+
+        $oversized->assertOk();
+        $this->assertNotNull($oversized->json('error') ?? $oversized->json('result.isError'));
+        $this->assertSame(0, BuddyTask::where('ulid', $taskId)->firstOrFail()->artifacts()->count());
+
+        $atLimit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 49, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.attach_artifact', 'arguments' => [
+                'task_id' => $taskId,
+                'type' => 'log',
+                'content' => str_repeat('a', 100000),
+            ]],
+        ]);
+
+        $atLimit->assertOk();
+        $this->assertSame(1, BuddyTask::where('ulid', $taskId)->firstOrFail()->artifacts()->count());
+    }
+
     public function test_evaluate_task_does_not_queue_a_second_run_for_a_running_evaluation(): void
     {
         // The job is unique only until it starts processing, so a duplicate
