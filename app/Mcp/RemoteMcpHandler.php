@@ -271,17 +271,34 @@ class RemoteMcpHandler
             'constraints.*' => ['string'],
             'evidence' => ['sometimes', 'array'],
             'requested_outcome' => ['sometimes', 'nullable', 'string', 'max:2000'],
+            'defer_evaluation' => ['sometimes', 'boolean'],
         ]);
 
-        // Submitting a problem IS the request to evaluate it. createTask()
-        // appends only the knowledge-prefetch message, so without the
-        // task-submitted message nothing ever dispatches EvaluateTaskJob and
-        // the task sits Pending with runs=0 while the agent polls forever.
-        $task = DB::transaction(function () use ($validated, $client) {
+        $deferred = (bool) ($validated['defer_evaluation'] ?? false);
+
+        // Submitting a problem IS the request to evaluate it, unless the caller
+        // says it has evidence to attach first. createTask() appends only the
+        // knowledge-prefetch message, so without the task-submitted message
+        // nothing ever dispatches EvaluateTaskJob and the task sits Pending
+        // with runs=0 while the agent polls forever.
+        //
+        // Deferring exists because ContextEnvelope reads the task's artifacts
+        // at the moment it compiles the prompt. Evaluating immediately puts the
+        // caller in a race it cannot win: attach_artifact needs the ULID that
+        // only submit returns, and by the time it is called the prompt is
+        // usually already built, so the artifact is stored and never read. The
+        // evaluator then reports that no evidence was supplied. Deferring
+        // leaves the task Pending, which is exactly the state evaluateTask()
+        // already knows how to start.
+        $task = DB::transaction(function () use ($validated, $client, $deferred) {
             $task = $this->evaluator->createTask(
                 ProblemPacket::fromArray($validated),
                 $client->id,
             );
+
+            if ($deferred) {
+                return $task;
+            }
 
             $this->state->transition($task, TaskStatus::Evaluating);
             $this->outbox->appendTaskSubmitted($task);
@@ -294,7 +311,7 @@ class RemoteMcpHandler
             'status' => $task->status->value,
             'knowledge_context_status' => $task->knowledge_context_status,
             'close_protocol' => UsageInstructions::CLOSE_PROTOCOL,
-        ]);
+        ] + ($deferred ? ['next_step' => 'Evaluation deferred. Attach evidence with buddy.attach_artifact, then call buddy.evaluate_task.'] : []));
     }
 
     protected function intervene(mixed $id, array $args, ApiClient $client, ApiKey $key): array
@@ -438,7 +455,21 @@ class RemoteMcpHandler
             'metadata' => $validated['metadata'] ?? null,
         ]);
 
-        return $this->toolResult($id, ['artifact_id' => $artifact->id]);
+        /*
+         * An artifact attached to an already-running evaluation is usually
+         * invisible to it: ContextEnvelope reads the artifacts once, when it
+         * compiles the prompt. The attach still succeeds, because the evidence
+         * is real and a later run or a human will want it, but saying so here
+         * is the difference between a caller who reaches for defer_evaluation
+         * and one who concludes the service is broken.
+         */
+        $result = ['artifact_id' => $artifact->id];
+
+        if ($task->status === TaskStatus::Evaluating) {
+            $result['warning'] = 'Attached while an evaluation is already running, so this artifact may not reach it. Submit with defer_evaluation=true, attach, then call buddy.evaluate_task.';
+        }
+
+        return $this->toolResult($id, $result);
     }
 
     /**

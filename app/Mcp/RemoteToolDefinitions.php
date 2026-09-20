@@ -48,7 +48,7 @@ class RemoteToolDefinitions
         return [
             [
                 'name' => 'buddy.submit_problem',
-                'description' => 'Submit a problem packet to Buddy. Returns a task ULID to poll.',
+                'description' => 'Submit a problem packet to Buddy. Returns a task ULID to poll. Evaluation starts immediately unless defer_evaluation is true, which is what you want whenever you have artifacts to attach.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -60,6 +60,7 @@ class RemoteToolDefinitions
                         'constraints' => ['type' => 'array', 'items' => ['type' => 'string']],
                         'evidence' => ['type' => 'array', 'items' => ['type' => 'object']],
                         'requested_outcome' => ['type' => 'string'],
+                        'defer_evaluation' => ['type' => 'boolean', 'description' => 'Leave the task Pending instead of evaluating at once. Set this whenever you will call buddy.attach_artifact: the evaluator reads artifacts when it compiles its prompt, so evidence attached to an already-running evaluation is stored but not read. Attach first, then call buddy.evaluate_task.'],
                     ],
                     'required' => ['source_agent', 'task_summary', 'problem_type'],
                 ],

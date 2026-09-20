@@ -75,17 +75,27 @@ Call `buddy.submit_problem` (MCP) or `POST /api/buddy/tasks` (REST).
 
 Provide as much structured information as possible. The more evidence and context you include, the better Buddy's evaluation will be.
 
+**If you intend to attach artifacts, pass `defer_evaluation: true`.** Submitting
+otherwise starts the evaluation at once, and the evaluator reads a task's
+artifacts when it compiles its prompt: anything attached after that moment is
+stored but never reaches the evaluation, which then reports that no evidence was
+supplied. A deferred task stays `pending` until you call `buddy.evaluate_task`.
+
 ### Step 2: Attach Additional Evidence (optional)
 
 If you have logs, test output, stack traces, or code snippets that did not fit in the initial submission, attach them:
 
 Call `buddy.attach_artifact` (MCP) or `POST /api/buddy/tasks/{id}/artifacts` (REST).
 
-You can attach multiple artifacts. Do this BEFORE requesting evaluation.
+You can attach multiple artifacts. Do this BEFORE requesting evaluation. Attaching
+to a task whose evaluation is already running returns a `warning` saying so; the
+artifact is kept, but that run will most likely not see it.
 
 ### Step 3: Request Evaluation
 
-Call `buddy.get_recommendation` (MCP) or `POST /api/buddy/tasks/{id}/evaluate` (REST).
+Call `buddy.evaluate_task` (MCP) or `POST /api/buddy/tasks/{id}/evaluate` (REST).
+A task submitted without `defer_evaluation` is already evaluating and does not
+need this step.
 
 This triggers Buddy's evaluator-optimizer agent. Buddy will:
 1. Search episodic memory for similar past problems

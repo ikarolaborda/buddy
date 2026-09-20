@@ -35,6 +35,7 @@ class SubmitProblemTool extends BaseMcpTool
                 'constraints' => ['type' => 'array', 'items' => ['type' => 'string']],
                 'evidence' => ['type' => 'array', 'items' => ['type' => 'object']],
                 'requested_outcome' => ['type' => 'string'],
+                'defer_evaluation' => ['type' => 'boolean', 'description' => 'Leave the task Pending instead of evaluating at once. Set this whenever you will call buddy.attach_artifact: the evaluator reads artifacts when it compiles its prompt, so evidence attached to an already-running evaluation is stored but not read. Attach first, then call buddy.evaluate_task.'],
             ],
             'required' => ['source_agent', 'task_summary', 'problem_type'],
         ];
@@ -43,16 +44,23 @@ class SubmitProblemTool extends BaseMcpTool
     public function handle(array $arguments): array
     {
         $packet = ProblemPacket::fromArray($arguments);
+        $deferred = (bool) ($arguments['defer_evaluation'] ?? false);
 
         /** @var EvaluatorOptimizerService $evaluator */
         $evaluator = app(EvaluatorOptimizerService::class);
 
-        // Submitting a problem IS the request to evaluate it. createTask()
-        // appends only the knowledge-prefetch message, so without the
-        // task-submitted message nothing ever dispatches EvaluateTaskJob and
-        // the task sits Pending with runs=0 while the agent polls forever.
-        $task = DB::transaction(function () use ($evaluator, $packet) {
+        // Submitting a problem IS the request to evaluate it, unless the caller
+        // says it has evidence to attach first. createTask() appends only the
+        // knowledge-prefetch message, so without the task-submitted message
+        // nothing ever dispatches EvaluateTaskJob and the task sits Pending
+        // with runs=0 while the agent polls forever. Deferring is the one case
+        // where Pending is wanted: see RemoteMcpHandler::submitProblem.
+        $task = DB::transaction(function () use ($evaluator, $packet, $deferred) {
             $task = $evaluator->createTask($packet);
+
+            if ($deferred) {
+                return $task;
+            }
 
             app(TaskStateService::class)->transition($task, TaskStatus::Evaluating);
             app(OutboxPublisher::class)->appendTaskSubmitted($task);
@@ -67,7 +75,9 @@ class SubmitProblemTool extends BaseMcpTool
                     'text' => json_encode([
                         'task_id' => $task->ulid,
                         'status' => $task->status->value,
-                        'message' => 'Problem submitted and evaluation dispatched. Poll buddy.get_task_status, then buddy.get_recommendation.',
+                        'message' => $deferred
+                            ? 'Problem submitted, evaluation deferred. Attach evidence with buddy.attach_artifact, then call buddy.evaluate_task.'
+                            : 'Problem submitted and evaluation dispatched. Poll buddy.get_task_status, then buddy.get_recommendation.',
                     ], JSON_THROW_ON_ERROR),
                 ],
             ],

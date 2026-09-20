@@ -236,6 +236,97 @@ class RemoteMcpTest extends TestCase
         Queue::assertPushed(EvaluateTaskJob::class);
     }
 
+    public function test_deferred_submit_holds_the_task_pending_until_evaluate_is_called(): void
+    {
+        // The evaluator reads a task's artifacts when it compiles its prompt, so
+        // a caller with evidence to attach has to be able to submit WITHOUT
+        // starting the evaluation. Without this, attach_artifact needs a ULID
+        // that only submit returns, and by the time it is called the prompt is
+        // already built: the artifact is stored and never read, and the verdict
+        // says no evidence was supplied.
+        Queue::fake();
+
+        $submit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 40, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Deferred submit so evidence can be attached first',
+                'problem_type' => 'other',
+                'defer_evaluation' => true,
+            ]],
+        ]);
+
+        $submit->assertOk();
+        $payload = json_decode($submit->json('result.content.0.text'), true);
+        $this->assertSame('pending', $payload['status']);
+        $this->assertArrayHasKey('next_step', $payload, 'A deferred submit must say how to start the evaluation.');
+        Queue::assertNotPushed(EvaluateTaskJob::class);
+
+        $attach = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 41, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.attach_artifact', 'arguments' => [
+                'task_id' => $payload['task_id'],
+                'type' => 'diff',
+                'content' => '--- a/x.php +++ b/x.php',
+            ]],
+        ]);
+
+        $attach->assertOk();
+        $attached = json_decode($attach->json('result.content.0.text'), true);
+        $this->assertArrayHasKey('artifact_id', $attached);
+        $this->assertArrayNotHasKey(
+            'warning',
+            $attached,
+            'Attaching to a Pending task is the supported order and must not warn.',
+        );
+
+        $evaluate = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 42, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.evaluate_task', 'arguments' => ['task_id' => $payload['task_id']]],
+        ]);
+
+        $evaluate->assertOk();
+        Queue::assertPushed(EvaluateTaskJob::class);
+
+        $task = BuddyTask::where('ulid', $payload['task_id'])->firstOrFail();
+        $this->assertSame('evaluating', $task->status->value);
+        $this->assertCount(1, $task->artifacts, 'The evidence must be on the task before the evaluation starts.');
+    }
+
+    public function test_attaching_to_a_running_evaluation_warns_that_it_may_not_be_read(): void
+    {
+        Queue::fake();
+
+        $submit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 43, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Attach after the evaluation has started',
+                'problem_type' => 'other',
+            ]],
+        ]);
+
+        $taskId = json_decode($submit->json('result.content.0.text'), true)['task_id'];
+
+        $attach = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 44, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.attach_artifact', 'arguments' => [
+                'task_id' => $taskId,
+                'type' => 'log',
+                'content' => 'late evidence',
+            ]],
+        ]);
+
+        $attach->assertOk();
+        $attached = json_decode($attach->json('result.content.0.text'), true);
+
+        // The attach still succeeds - the evidence is real and a later run or a
+        // human will want it - but the caller is told, because silence here is
+        // what made the surface look broken.
+        $this->assertArrayHasKey('artifact_id', $attached);
+        $this->assertStringContainsString('defer_evaluation', $attached['warning']);
+    }
+
     public function test_cross_client_tasks_are_invisible(): void
     {
         $other = ApiClient::create(['name' => 'other', 'project' => 'buddy']);
