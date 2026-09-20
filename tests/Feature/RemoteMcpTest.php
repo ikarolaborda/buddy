@@ -293,6 +293,37 @@ class RemoteMcpTest extends TestCase
         $this->assertCount(1, $task->artifacts, 'The evidence must be on the task before the evaluation starts.');
     }
 
+    public function test_evaluate_task_does_not_queue_a_second_run_for_a_running_evaluation(): void
+    {
+        // The job is unique only until it starts processing, so a duplicate
+        // dispatch is not reliably dropped. Nothing reached this path while
+        // submit always evaluated; deferring makes evaluate_task a call agents
+        // actually make, so a retry or a double-send would.
+        Queue::fake();
+
+        $submit = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 45, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.submit_problem', 'arguments' => [
+                'source_agent' => 'remote-e2e',
+                'task_summary' => 'Double dispatch guard',
+                'problem_type' => 'other',
+            ]],
+        ]);
+
+        $taskId = json_decode($submit->json('result.content.0.text'), true)['task_id'];
+        Queue::assertPushed(EvaluateTaskJob::class, 1);
+
+        $again = $this->rpc([
+            'jsonrpc' => '2.0', 'id' => 46, 'method' => 'tools/call',
+            'params' => ['name' => 'buddy.evaluate_task', 'arguments' => ['task_id' => $taskId]],
+        ]);
+
+        $again->assertOk();
+        $payload = json_decode($again->json('result.content.0.text'), true);
+        $this->assertStringContainsString('already running', $payload['message']);
+        Queue::assertPushed(EvaluateTaskJob::class, 1);
+    }
+
     public function test_attaching_to_a_running_evaluation_warns_that_it_may_not_be_read(): void
     {
         Queue::fake();

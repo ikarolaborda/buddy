@@ -378,11 +378,25 @@ class RemoteMcpHandler
             return $this->toolError($id, 'Task is in a terminal state.');
         }
 
-        DB::transaction(function () use ($task) {
-            if ($task->status === TaskStatus::Pending) {
-                $this->state->transition($task, TaskStatus::Evaluating);
-            }
+        /*
+         * Appending a second task-submitted message for a task that is already
+         * evaluating queues a second run of the same evaluation. The job is
+         * unique only until it starts processing, so the duplicate is not
+         * always dropped, and the caller pays for an answer it did not ask for.
+         * Nothing reached this path while submit always evaluated; now that
+         * deferring makes evaluate_task a call agents actually make, a retry or
+         * a double-send would.
+         */
+        if ($task->status === TaskStatus::Evaluating) {
+            return $this->toolResult($id, [
+                'task_id' => $task->ulid,
+                'status' => 'evaluating',
+                'message' => 'An evaluation is already running for this task. Poll buddy.get_task_status.',
+            ]);
+        }
 
+        DB::transaction(function () use ($task) {
+            $this->state->transition($task, TaskStatus::Evaluating);
             $this->outbox->appendTaskSubmitted($task);
         });
 

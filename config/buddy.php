@@ -162,6 +162,14 @@ return [
         'retry_after' => (int) env('BUDDY_QUEUE_RETRY_AFTER', 2400),
         'lease' => (int) env('BUDDY_TASK_LEASE_SECONDS', 1200),
         /*
+         * How long a task may sit Pending before buddy:tasks:reap-pending
+         * closes it. Both surfaces can leave one: REST creates Pending and waits
+         * for /evaluate, and submit_problem does the same under
+         * defer_evaluation. A day is far longer than any agent's attach step and
+         * short enough that an abandoned task stops looking live.
+         */
+        'pending_task_hours' => (int) env('BUDDY_PENDING_TASK_HOURS', 24),
+        /*
          * Raised from 900/1200 on 2026-09-06, on measurement rather than
          * caution. The seven councils that have completed took 336, 342, 486,
          * 555, 559, 677 and 811 seconds. The longest was inside 10% of the 900s

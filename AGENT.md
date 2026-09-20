@@ -81,6 +81,12 @@ artifacts when it compiles its prompt: anything attached after that moment is
 stored but never reaches the evaluation, which then reports that no evidence was
 supplied. A deferred task stays `pending` until you call `buddy.evaluate_task`.
 
+A task left `pending` is closed automatically after
+`BUDDY_PENDING_TASK_HOURS` (24 by default), because an abandoned task is
+otherwise indistinguishable from one about to be evaluated. That is far longer
+than an attach step needs, but do not submit a deferred task and come back
+tomorrow: submit, attach, evaluate.
+
 ### Step 2: Attach Additional Evidence (optional)
 
 If you have logs, test output, stack traces, or code snippets that did not fit in the initial submission, attach them:
