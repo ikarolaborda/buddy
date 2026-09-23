@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
+    'model' => env('BUDDY_MODEL', 'gpt-6-sol'),
 
     'interventions' => [
         'enabled' => (bool) env('BUDDY_INTERVENTIONS', true),
@@ -306,7 +306,7 @@ return [
     | (tests/Feature/QueueLanesTest pins them together).
     |
     | evaluations x the worker's maxReplicas is the structural provider cap:
-    | Azure OpenAI gpt-6-astra allows 100K tokens per minute and an evaluation
+    | Azure OpenAI gpt-6-sol allows 100K tokens per minute and an evaluation
     | spends about 6K tokens in about a minute, so 5 x 3 = 15 concurrent
     | evaluations stay under the quota with room for a council. Raise either
     | number only with a higher provider quota.

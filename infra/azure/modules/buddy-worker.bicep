@@ -53,7 +53,7 @@ param scalingMetricsUrl string = ''
 // tests/Feature/QueueLanesTest fails when they drift apart.
 //
 // evaluations x maxReplicas is the structural provider cap: Azure OpenAI
-// gpt-6-astra allows 100K tokens/min and an evaluation spends ~6K tokens in
+// gpt-6-sol allows 100K tokens/min and an evaluation spends ~6K tokens in
 // ~60 s, so 15 concurrent evaluations (5 x 3) stay under the quota with room
 // for a council. Raise either number only with a higher provider quota.
 param workerEvaluationCapacity int = 5
@@ -334,7 +334,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'OPENROUTER_API_KEY', secretRef: 'openrouter-api-key' }
             { name: 'BUDDY_EVALUATOR_PROVIDER', value: 'azure' }
             { name: 'BUDDY_REFINER_PROVIDER', value: 'azure' }
-            { name: 'BUDDY_MODEL', value: 'gpt-6-astra' }
+            { name: 'BUDDY_MODEL', value: 'gpt-6-sol' }
             { name: 'BUDDY_MODEL_ROUTING', value: 'false' }
             { name: 'AZURE_OPENAI_API_KEY', secretRef: 'azure-openai-key' }
             { name: 'AZURE_OPENAI_URL', value: azureOpenAiUrl }

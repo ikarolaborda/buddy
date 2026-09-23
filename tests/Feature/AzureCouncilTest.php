@@ -60,7 +60,7 @@ class AzureCouncilTest extends TestCase
             $this->assertArrayNotHasKey('max_tokens', $request->data());
         }
         $this->assertSame('xhigh', $requests[0]['reasoning']['effort']);
-        $this->assertSame('gpt-6-astra', $requests[0]['model']);
+        $this->assertSame('gpt-6-sol', $requests[0]['model']);
         $this->assertSame(['gpt-5.5'], $requests->slice(1, 3)->map(fn ($r) => $r['model'])->unique()->values()->all());
         $this->assertSame(['Bearer ROUTER-SECRET'], $requests[4]->header('Authorization'));
         $this->assertEmpty($requests[4]->header('api-key'));

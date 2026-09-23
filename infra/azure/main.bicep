@@ -56,7 +56,7 @@ param monthlyBudgetAmount int = 100
 param azureOpenAiUrl string = 'https://aerolambda-ai-eastus2.openai.azure.com'
 
 @description('Direct-from-Azure deployment used by Buddy evaluation agents')
-param azureOpenAiDeployment string = 'gpt-6-astra'
+param azureOpenAiDeployment string = 'gpt-6-sol'
 
 @description('Redis list the worker KEDA scaler measures. Must equal the Laravel prefix + queues:<queue> the worker writes; see modules/buddy-worker.bicep.')
 param redisQueueListName string = 'laravel-database-queues:default'

@@ -111,7 +111,7 @@ class RemoteToolDefinitions
             ],
             [
                 'name' => 'buddy.council_evaluate',
-                'description' => 'Convene a council on a task. Optional profile="azure" selects the backup: Astra xhigh chair and three GPT-5.5 reviewers with distinct review focuses (one shared model family). Default uses the configured council. Slow and costly; requires failed or rejected evaluation, or criticality="critical" with a substantive reason. Supply rich evidence. Poll buddy.get_task_status for the verdict.',
+                'description' => 'Convene a council on a task. Optional profile="azure" selects the backup: Sol xhigh chair and three GPT-5.5 reviewers with distinct review focuses (one shared model family). Default uses the configured council. Slow and costly; requires failed or rejected evaluation, or criticality="critical" with a substantive reason. Supply rich evidence. Poll buddy.get_task_status for the verdict.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
