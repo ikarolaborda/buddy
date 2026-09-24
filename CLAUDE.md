@@ -10,7 +10,7 @@ Its proposed features are not deployed behavior.
 Run real evaluations through the deployed Azure Buddy at `https://buddy.aerolambda.tech/api/mcp`.
 Do not use local or Pointerpro Buddy containers for real evaluations.
 Local tests can use AI and HTTP fakes.
-The Azure council uses Sol (`gpt-6-sol`) `xhigh` as chairman and three GPT-5.5 `high` reviewers.
+The Azure council uses Astra `xhigh` as chairman and three GPT-5.5 `high` reviewers.
 Keep Azure as the default and `BUDDY_COUNCIL_WORKERS_AI_SOL=false` under the credit-only constraint.
 Search shared memory with project `buddy` and query `Cloudflare implementation plan September 15 2026 P0 P8`.
 

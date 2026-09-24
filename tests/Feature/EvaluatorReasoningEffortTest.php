@@ -88,7 +88,7 @@ class EvaluatorReasoningEffortTest extends TestCase
             'id' => 'resp_test',
             'object' => 'response',
             'status' => 'completed',
-            'model' => 'gpt-6-sol',
+            'model' => 'gpt-6-astra',
             'output' => [[
                 'type' => 'message',
                 'id' => 'msg_test',

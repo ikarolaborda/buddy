@@ -112,7 +112,7 @@ $councilProfiles = [
         'auth_header' => 'api-key',
         'token_parameter' => 'max_output_tokens',
         'headers' => [],
-        'chairman' => ['key' => 'chairman', 'model' => env('BUDDY_COUNCIL_AZURE_CHAIRMAN', 'gpt-6-sol'), 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
+        'chairman' => ['key' => 'chairman', 'model' => env('BUDDY_COUNCIL_AZURE_CHAIRMAN', 'gpt-6-astra'), 'family' => 'openai', 'reasoning_effort' => 'xhigh'],
         'members' => [
             ['key' => 'correctness', 'model' => env('BUDDY_COUNCIL_AZURE_REVIEWER', 'gpt-5.5'), 'family' => 'openai', 'reasoning_effort' => 'high', 'review_focus' => 'Correctness, invariants, counterexamples, and missing tests.'],
             ['key' => 'reliability', 'model' => env('BUDDY_COUNCIL_AZURE_REVIEWER', 'gpt-5.5'), 'family' => 'openai', 'reasoning_effort' => 'high', 'review_focus' => 'Reliability, timeouts, concurrency, recovery, and operational evidence.'],
@@ -265,12 +265,8 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Temperature and gpt-6-astra / gpt-6-sol
+    | Temperature and gpt-6-astra
     |--------------------------------------------------------------------------
-    |
-    | gpt-6-sol (the evaluator and Azure chair since 2026-09-23) rejects a
-    | non-default temperature with the same message; verified live against the
-    | eastus2 deployment on 2026-09-23.
     |
     | These profiles used to ask for 0.2 and 0.3. gpt-6-astra REJECTS both:
     | "Unsupported value: 'temperature' does not support 0.2 with this model.
@@ -295,7 +291,7 @@ return [
     'profiles' => [
         'evaluator-optimizer' => [
             'provider' => env('BUDDY_EVALUATOR_PROVIDER', 'azure'),
-            'model' => env('BUDDY_MODEL', 'gpt-6-sol'),
+            'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 1.0,
@@ -311,7 +307,7 @@ return [
         ],
         'prompt-refiner' => [
             'provider' => env('BUDDY_REFINER_PROVIDER', 'azure'),
-            'model' => env('BUDDY_MODEL', 'gpt-6-sol'),
+            'model' => env('BUDDY_MODEL', 'gpt-6-astra'),
             'timeout' => (int) env('BUDDY_EVALUATION_TIMEOUT', 240),
             'max_steps' => (int) env('BUDDY_MAX_EVALUATION_STEPS', 10),
             'temperature' => 1.0,
