@@ -16,7 +16,7 @@ RUN composer install \
     --prefer-dist \
     --ignore-platform-reqs
 
-FROM php:8.5-fpm-alpine AS app
+FROM php:8.5.12-fpm-alpine@sha256:f09d9172dd28b8696aef729ca2c2081a132c1f8d581218c99497d552c82a92df AS app
 
 # php-fpm's base image stops with SIGQUIT, which neither Horizon nor a shell
 # handles; as PID 1 they drop it and the platform waits out the whole grace
