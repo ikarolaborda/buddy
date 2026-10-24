@@ -10,7 +10,9 @@
 # The BUDDY_IMAGE_ROLE marker below lets docker/entrypoint.sh refuse to boot
 # this image against APP_ENV=production.
 
-FROM php:8.5-cli
+FROM php:8.5.12-cli@sha256:635a4b998025ab269194639a5549c6fdcd9b4f88ec8cd761b092de8653d40663
+
+RUN echo 'session.upload_progress.enabled = 0' > "$PHP_INI_DIR/conf.d/99-buddy-security.ini"
 
 LABEL org.opencontainers.image.title="buddy-dev-local"
 LABEL org.opencontainers.image.description="Local development image. Not deployable. See docker/production/ for release images."
