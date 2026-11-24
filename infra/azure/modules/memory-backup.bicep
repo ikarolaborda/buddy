@@ -17,6 +17,9 @@ param retentionDays string = '14'
 
 @secure()
 param qdrantApiKeySecretUri string
+param qdrantCaSecretUri string = ''
+
+var databaseSecretName = empty(qdrantCaSecretUri) ? 'qdrant-api-key' : 'buddy-private-qdrant'
 
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
@@ -75,8 +78,13 @@ resource backupJob 'Microsoft.App/jobs@2024-03-01' = {
         replicaCompletionCount: 1
       }
       secrets: [
+        ...(empty(qdrantCaSecretUri) ? [] : [{
+          name: 'buddy-private-qdrant-ca'
+          keyVaultUrl: qdrantCaSecretUri
+          identity: identity.id
+        }])
         {
-          name: 'qdrant-api-key'
+          name: databaseSecretName
           keyVaultUrl: qdrantApiKeySecretUri
           identity: identity.id
         }
@@ -93,13 +101,15 @@ resource backupJob 'Microsoft.App/jobs@2024-03-01' = {
             memory: '1Gi'
           }
           env: [
+            ...(empty(qdrantCaSecretUri) ? [] : [{ name: 'QDRANT_CA_FILE', value: '/etc/buddy-private-trust/ca.pem' }])
             { name: 'QDRANT_URL', value: qdrantRestUrl }
-            { name: 'QDRANT_API_KEY', secretRef: 'qdrant-api-key' }
+            { name: 'QDRANT_API_KEY', secretRef: databaseSecretName }
             { name: 'STORAGE_ACCOUNT', value: storageAccountName }
             { name: 'RETENTION_DAYS', value: retentionDays }
             { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
           ]
           volumeMounts: [
+            ...(empty(qdrantCaSecretUri) ? [] : [{ volumeName: 'buddy-private-trust', mountPath: '/etc/buddy-private-trust' }])
             {
               volumeName: 'hub-data'
               mountPath: '/hub-data'
@@ -108,6 +118,11 @@ resource backupJob 'Microsoft.App/jobs@2024-03-01' = {
         }
       ]
       volumes: [
+        ...(empty(qdrantCaSecretUri) ? [] : [{
+          name: 'buddy-private-trust'
+          storageType: 'Secret'
+          secrets: [{ secretRef: 'buddy-private-qdrant-ca', path: 'ca.pem' }]
+        }])
         {
           name: 'hub-data'
           storageType: 'AzureFile'

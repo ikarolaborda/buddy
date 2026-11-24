@@ -28,11 +28,16 @@ param hubImageTag string = 'none'
 @description('Immutable image tag for the MiniLM embedding sidecar')
 param embeddingImageTag string = 'none'
 
-@description('Qdrant Managed Cloud gRPC hostname (external lifecycle)')
+@description('Qdrant gRPC hostname or TLS-certified private address')
 param qdrantHost string = ''
 
-@description('Qdrant Managed Cloud gRPC port')
+@description('Qdrant gRPC port')
 param qdrantPort string = '6334'
+
+param qdrantRestPort string = '6333'
+
+@description('Optional Key Vault URI for the private Qdrant CA certificate')
+param qdrantCaSecretUri string = ''
 
 @secure()
 @description('Key Vault secret URI for the Qdrant API key')
@@ -184,6 +189,7 @@ module memoryHub 'modules/memory-hub.bicep' = if (deployWorkloads) {
     qdrantHost: qdrantHost
     qdrantPort: qdrantPort
     qdrantApiKeySecretUri: qdrantApiKeySecretUri
+    qdrantCaSecretUri: qdrantCaSecretUri
     hubSigningKeySecretUri: hubSigningKeySecretUri
   }
 }
@@ -297,8 +303,9 @@ module memoryBackup 'modules/memory-backup.bicep' = if (deployWorkloads && deplo
     environment: environment
     location: location
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.environmentId
-    qdrantRestUrl: 'https://${qdrantHost}:6333'
+    qdrantRestUrl: 'https://${qdrantHost}:${qdrantRestPort}'
     qdrantApiKeySecretUri: qdrantApiKeySecretUri
+    qdrantCaSecretUri: qdrantCaSecretUri
     storageAccountName: containerAppsEnvironment.outputs.hubStorageAccountName
   }
   dependsOn: [

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Nightly memory-plane backup: snapshots every Qdrant Cloud collection to
+# Nightly memory-plane backup: snapshots every Qdrant collection to
 # blob storage and archives the hub's JSON registries. Runs inside the
 # azure-cli image as a scheduled Container Apps Job with a user-assigned
 # identity (Storage Blob Data Contributor + Key Vault Secrets User).
@@ -16,7 +16,12 @@ az login --identity --client-id "$AZURE_CLIENT_ID" --output none 2>/dev/null \
 az storage container create --auth-mode login \
   --account-name "$STORAGE_ACCOUNT" --name "$CONTAINER" --output none
 
-collections=$(curl -fsS -H "api-key: $QDRANT_API_KEY" "$QDRANT_URL/collections" \
+qdrant_tls=()
+if [[ -n "${QDRANT_CA_FILE:-}" ]]; then
+  qdrant_tls=(--cacert "$QDRANT_CA_FILE")
+fi
+
+collections=$(curl "${qdrant_tls[@]}" -fsS -H "api-key: $QDRANT_API_KEY" "$QDRANT_URL/collections" \
   | python3 -c "import json,sys; print('\n'.join(c['name'] for c in json.load(sys.stdin)['result']['collections']))")
 
 if [ -z "$collections" ]; then
@@ -24,11 +29,11 @@ if [ -z "$collections" ]; then
 fi
 
 for col in $collections; do
-  snap=$(curl -fsS -X POST -H "api-key: $QDRANT_API_KEY" \
+  snap=$(curl "${qdrant_tls[@]}" -fsS -X POST -H "api-key: $QDRANT_API_KEY" \
     "$QDRANT_URL/collections/$col/snapshots" \
     | python3 -c "import json,sys; print(json.load(sys.stdin)['result']['name'])")
 
-  curl -fsS -H "api-key: $QDRANT_API_KEY" \
+  curl "${qdrant_tls[@]}" -fsS -H "api-key: $QDRANT_API_KEY" \
     "$QDRANT_URL/collections/$col/snapshots/$snap" --output "/tmp/$snap"
 
   az storage blob upload --auth-mode login \
@@ -38,7 +43,7 @@ for col in $collections; do
   rm -f "/tmp/$snap"
 
   # Server-side snapshots consume cluster disk; keep only the blob copy.
-  curl -fsS -X DELETE -H "api-key: $QDRANT_API_KEY" \
+  curl "${qdrant_tls[@]}" -fsS -X DELETE -H "api-key: $QDRANT_API_KEY" \
     "$QDRANT_URL/collections/$col/snapshots/$snap" --output /dev/null || true
 
   echo "backed up $col -> $CONTAINER/qdrant/$col/$STAMP.snapshot"

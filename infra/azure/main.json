@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.45.15.27210",
-      "templateHash": "16687278093301997863"
+      "templateHash": "4546913275442049144"
     }
   },
   "parameters": {
@@ -65,14 +65,14 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Qdrant Managed Cloud gRPC hostname (external lifecycle)"
+        "description": "Qdrant gRPC hostname or TLS-certified private address"
       }
     },
     "qdrantPort": {
       "type": "string",
       "defaultValue": "6334",
       "metadata": {
-        "description": "Qdrant Managed Cloud gRPC port"
+        "description": "Qdrant gRPC port"
       }
     },
     "qdrantApiKeySecretUri": {
@@ -122,6 +122,17 @@
       "metadata": {
         "description": "Direct-from-Azure deployment used by Buddy evaluation agents"
       }
+    },
+    "qdrantCaSecretUri": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional Key Vault URI for the private Qdrant CA certificate"
+      }
+    },
+    "qdrantRestPort": {
+      "type": "string",
+      "defaultValue": "6333"
     }
   },
   "variables": {
@@ -1050,6 +1061,9 @@
           "qdrantApiKeySecretUri": {
             "value": "[parameters('qdrantApiKeySecretUri')]"
           },
+          "qdrantCaSecretUri": {
+            "value": "[parameters('qdrantCaSecretUri')]"
+          },
           "hubSigningKeySecretUri": {
             "value": "[parameters('hubSigningKeySecretUri')]"
           }
@@ -1061,7 +1075,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "10340591171406373752"
+              "templateHash": "3328250176363918769"
             }
           },
           "parameters": {
@@ -1099,11 +1113,16 @@
             "qdrantApiKeySecretUri": {
               "type": "securestring"
             },
+            "qdrantCaSecretUri": {
+              "type": "string",
+              "defaultValue": ""
+            },
             "hubSigningKeySecretUri": {
               "type": "securestring"
             }
           },
           "variables": {
+            "databaseSecretName": "[if(empty(parameters('qdrantCaSecretUri')), 'qdrant-api-key', 'buddy-private-qdrant')]",
             "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
             "acrPull": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
           },
@@ -1161,18 +1180,7 @@
                     "targetPort": 8200,
                     "transport": "http"
                   },
-                  "secrets": [
-                    {
-                      "name": "qdrant-api-key",
-                      "keyVaultUrl": "[parameters('qdrantApiKeySecretUri')]",
-                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]"
-                    },
-                    {
-                      "name": "hub-signing-key",
-                      "keyVaultUrl": "[parameters('hubSigningKeySecretUri')]",
-                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))]"
-                    }
-                  ],
+                  "secrets": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'buddy-private-qdrant-ca', 'keyVaultUrl', parameters('qdrantCaSecretUri'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))))), createArray(createObject('name', variables('databaseSecretName'), 'keyVaultUrl', parameters('qdrantApiKeySecretUri'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))), createObject('name', 'hub-signing-key', 'keyVaultUrl', parameters('hubSigningKeySecretUri'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-hub-{0}', parameters('environment')))))))]",
                   "registries": [
                     {
                       "server": "[parameters('acrLoginServer')]",
@@ -1202,52 +1210,7 @@
                         "cpu": "[json('1.0')]",
                         "memory": "2Gi"
                       },
-                      "env": [
-                        {
-                          "name": "HUB_TENANCY",
-                          "value": "multi"
-                        },
-                        {
-                          "name": "HUB_JOBS_FILE",
-                          "value": "/app/data/jobs.json"
-                        },
-                        {
-                          "name": "HUB_SCHEDULES_FILE",
-                          "value": "/app/data/schedules.json"
-                        },
-                        {
-                          "name": "HUB_REVOCATION_FILE",
-                          "value": "/app/data/revocations.json"
-                        },
-                        {
-                          "name": "QDRANT_HOST",
-                          "value": "[parameters('qdrantHost')]"
-                        },
-                        {
-                          "name": "QDRANT_PORT",
-                          "value": "[parameters('qdrantPort')]"
-                        },
-                        {
-                          "name": "QDRANT_USE_TLS",
-                          "value": "true"
-                        },
-                        {
-                          "name": "QDRANT_API_KEY",
-                          "secretRef": "qdrant-api-key"
-                        },
-                        {
-                          "name": "HUB_SIGNING_KEY",
-                          "secretRef": "hub-signing-key"
-                        },
-                        {
-                          "name": "EMBED_BACKEND",
-                          "value": "sidecar"
-                        },
-                        {
-                          "name": "EMBED_URL",
-                          "value": "http://localhost:8000"
-                        }
-                      ],
+                      "env": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'SSL_CERT_FILE', 'value', '/etc/buddy-private-trust/ca.pem'))), createArray(createObject('name', 'HUB_TENANCY', 'value', 'multi'), createObject('name', 'HUB_JOBS_FILE', 'value', '/app/data/jobs.json'), createObject('name', 'HUB_SCHEDULES_FILE', 'value', '/app/data/schedules.json'), createObject('name', 'HUB_REVOCATION_FILE', 'value', '/app/data/revocations.json'), createObject('name', 'QDRANT_HOST', 'value', parameters('qdrantHost')), createObject('name', 'QDRANT_PORT', 'value', parameters('qdrantPort')), createObject('name', 'QDRANT_USE_TLS', 'value', 'true'), createObject('name', 'QDRANT_API_KEY', 'secretRef', variables('databaseSecretName')), createObject('name', 'HUB_SIGNING_KEY', 'secretRef', 'hub-signing-key'), createObject('name', 'EMBED_BACKEND', 'value', 'sidecar'), createObject('name', 'EMBED_URL', 'value', 'http://localhost:8000'))))]",
                       "probes": [
                         {
                           "type": "Readiness",
@@ -1267,12 +1230,7 @@
                           "periodSeconds": 30
                         }
                       ],
-                      "volumeMounts": [
-                        {
-                          "volumeName": "hub-data",
-                          "mountPath": "/app/data"
-                        }
-                      ]
+                      "volumeMounts": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('volumeName', 'buddy-private-trust', 'mountPath', '/etc/buddy-private-trust'))), createArray(createObject('volumeName', 'hub-data', 'mountPath', '/app/data'))))]"
                     },
                     {
                       "name": "minilm-sidecar",
@@ -1283,13 +1241,7 @@
                       }
                     }
                   ],
-                  "volumes": [
-                    {
-                      "name": "hub-data",
-                      "storageType": "AzureFile",
-                      "storageName": "hub-data"
-                    }
-                  ]
+                  "volumes": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'buddy-private-trust', 'storageType', 'Secret', 'secrets', createArray(createObject('secretRef', 'buddy-private-qdrant-ca', 'path', 'ca.pem'))))), createArray(createObject('name', 'hub-data', 'storageType', 'AzureFile', 'storageName', 'hub-data'))))]"
                 }
               },
               "dependsOn": [
@@ -2792,10 +2744,13 @@
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.environmentId.value]"
           },
           "qdrantRestUrl": {
-            "value": "[format('https://{0}:6333', parameters('qdrantHost'))]"
+            "value": "[format('https://{0}:{1}', parameters('qdrantHost'), parameters('qdrantRestPort'))]"
           },
           "qdrantApiKeySecretUri": {
             "value": "[parameters('qdrantApiKeySecretUri')]"
+          },
+          "qdrantCaSecretUri": {
+            "value": "[parameters('qdrantCaSecretUri')]"
           },
           "storageAccountName": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'container-apps-environment'), '2025-04-01').outputs.hubStorageAccountName.value]"
@@ -2808,7 +2763,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.45.15.27210",
-              "templateHash": "11700669526087853199"
+              "templateHash": "329910255289642566"
             }
           },
           "parameters": {
@@ -2838,10 +2793,15 @@
             },
             "qdrantApiKeySecretUri": {
               "type": "securestring"
+            },
+            "qdrantCaSecretUri": {
+              "type": "string",
+              "defaultValue": ""
             }
           },
           "variables": {
-            "$fxv#0": "#!/bin/bash\n# Nightly memory-plane backup: snapshots every Qdrant Cloud collection to\n# blob storage and archives the hub's JSON registries. Runs inside the\n# azure-cli image as a scheduled Container Apps Job with a user-assigned\n# identity (Storage Blob Data Contributor + Key Vault Secrets User).\nset -euo pipefail\n\n: \"${QDRANT_URL:?}\" \"${QDRANT_API_KEY:?}\" \"${STORAGE_ACCOUNT:?}\" \"${AZURE_CLIENT_ID:?}\"\nCONTAINER=\"${BACKUP_CONTAINER:-memory-backups}\"\nRETENTION_DAYS=\"${RETENTION_DAYS:-14}\"\nSTAMP=\"$(date -u +%Y-%m-%dT%H-%M-%SZ)\"\n\naz login --identity --client-id \"$AZURE_CLIENT_ID\" --output none 2>/dev/null \\\n  || az login --identity --username \"$AZURE_CLIENT_ID\" --output none\n\naz storage container create --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --name \"$CONTAINER\" --output none\n\ncollections=$(curl -fsS -H \"api-key: $QDRANT_API_KEY\" \"$QDRANT_URL/collections\" \\\n  | python3 -c \"import json,sys; print('\\n'.join(c['name'] for c in json.load(sys.stdin)['result']['collections']))\")\n\nif [ -z \"$collections\" ]; then\n  echo \"WARNING: no collections found at $QDRANT_URL\" >&2\nfi\n\nfor col in $collections; do\n  snap=$(curl -fsS -X POST -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots\" \\\n    | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['name'])\")\n\n  curl -fsS -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output \"/tmp/$snap\"\n\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"qdrant/$col/$STAMP.snapshot\" --file \"/tmp/$snap\" --output none\n\n  rm -f \"/tmp/$snap\"\n\n  # Server-side snapshots consume cluster disk; keep only the blob copy.\n  curl -fsS -X DELETE -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output /dev/null || true\n\n  echo \"backed up $col -> $CONTAINER/qdrant/$col/$STAMP.snapshot\"\ndone\n\nif [ -d /hub-data ]; then\n  # The azure-cli image ships no tar binary; python is always present.\n  python3 -c \"import tarfile; t = tarfile.open('/tmp/hub-registries.tar.gz', 'w:gz'); t.add('/hub-data', arcname='.'); t.close()\"\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"hub-registries/$STAMP.tar.gz\" --file \"/tmp/hub-registries.tar.gz\" --output none\n  echo \"backed up hub registries -> $CONTAINER/hub-registries/$STAMP.tar.gz\"\nfi\n\ncutoff=$(python3 -c \"from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=$RETENTION_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ'))\")\n\naz storage blob list --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n  --query \"[?properties.creationTime < '$cutoff'].name\" -o tsv \\\n  | while read -r blob; do\n      [ -z \"$blob\" ] && continue\n      az storage blob delete --auth-mode login \\\n        --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n        --name \"$blob\" --output none\n      echo \"pruned $blob\"\n    done\n\necho \"memory backup complete: $STAMP\"\n",
+            "$fxv#0": "#!/bin/bash\n# Nightly memory-plane backup: snapshots every Qdrant collection to\n# blob storage and archives the hub's JSON registries. Runs inside the\n# azure-cli image as a scheduled Container Apps Job with a user-assigned\n# identity (Storage Blob Data Contributor + Key Vault Secrets User).\nset -euo pipefail\n\n: \"${QDRANT_URL:?}\" \"${QDRANT_API_KEY:?}\" \"${STORAGE_ACCOUNT:?}\" \"${AZURE_CLIENT_ID:?}\"\nCONTAINER=\"${BACKUP_CONTAINER:-memory-backups}\"\nRETENTION_DAYS=\"${RETENTION_DAYS:-14}\"\nSTAMP=\"$(date -u +%Y-%m-%dT%H-%M-%SZ)\"\n\naz login --identity --client-id \"$AZURE_CLIENT_ID\" --output none 2>/dev/null \\\n  || az login --identity --username \"$AZURE_CLIENT_ID\" --output none\n\naz storage container create --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --name \"$CONTAINER\" --output none\n\nqdrant_tls=()\nif [[ -n \"${QDRANT_CA_FILE:-}\" ]]; then\n  qdrant_tls=(--cacert \"$QDRANT_CA_FILE\")\nfi\n\ncollections=$(curl \"${qdrant_tls[@]}\" -fsS -H \"api-key: $QDRANT_API_KEY\" \"$QDRANT_URL/collections\" \\\n  | python3 -c \"import json,sys; print('\\n'.join(c['name'] for c in json.load(sys.stdin)['result']['collections']))\")\n\nif [ -z \"$collections\" ]; then\n  echo \"WARNING: no collections found at $QDRANT_URL\" >&2\nfi\n\nfor col in $collections; do\n  snap=$(curl \"${qdrant_tls[@]}\" -fsS -X POST -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots\" \\\n    | python3 -c \"import json,sys; print(json.load(sys.stdin)['result']['name'])\")\n\n  curl \"${qdrant_tls[@]}\" -fsS -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output \"/tmp/$snap\"\n\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"qdrant/$col/$STAMP.snapshot\" --file \"/tmp/$snap\" --output none\n\n  rm -f \"/tmp/$snap\"\n\n  # Server-side snapshots consume cluster disk; keep only the blob copy.\n  curl \"${qdrant_tls[@]}\" -fsS -X DELETE -H \"api-key: $QDRANT_API_KEY\" \\\n    \"$QDRANT_URL/collections/$col/snapshots/$snap\" --output /dev/null || true\n\n  echo \"backed up $col -> $CONTAINER/qdrant/$col/$STAMP.snapshot\"\ndone\n\nif [ -d /hub-data ]; then\n  # The azure-cli image ships no tar binary; python is always present.\n  python3 -c \"import tarfile; t = tarfile.open('/tmp/hub-registries.tar.gz', 'w:gz'); t.add('/hub-data', arcname='.'); t.close()\"\n  az storage blob upload --auth-mode login \\\n    --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n    --name \"hub-registries/$STAMP.tar.gz\" --file \"/tmp/hub-registries.tar.gz\" --output none\n  echo \"backed up hub registries -> $CONTAINER/hub-registries/$STAMP.tar.gz\"\nfi\n\ncutoff=$(python3 -c \"from datetime import datetime,timedelta,timezone; print((datetime.now(timezone.utc)-timedelta(days=$RETENTION_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ'))\")\n\naz storage blob list --auth-mode login \\\n  --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n  --query \"[?properties.creationTime < '$cutoff'].name\" -o tsv \\\n  | while read -r blob; do\n      [ -z \"$blob\" ] && continue\n      az storage blob delete --auth-mode login \\\n        --account-name \"$STORAGE_ACCOUNT\" --container-name \"$CONTAINER\" \\\n        --name \"$blob\" --output none\n      echo \"pruned $blob\"\n    done\n\necho \"memory backup complete: $STAMP\"\n",
+            "databaseSecretName": "[if(empty(parameters('qdrantCaSecretUri')), 'qdrant-api-key', 'buddy-private-qdrant')]",
             "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
             "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
           },
@@ -2902,13 +2862,7 @@
                     "parallelism": 1,
                     "replicaCompletionCount": 1
                   },
-                  "secrets": [
-                    {
-                      "name": "qdrant-api-key",
-                      "keyVaultUrl": "[parameters('qdrantApiKeySecretUri')]",
-                      "identity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))]"
-                    }
-                  ]
+                  "secrets": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'buddy-private-qdrant-ca', 'keyVaultUrl', parameters('qdrantCaSecretUri'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))))), createArray(createObject('name', variables('databaseSecretName'), 'keyVaultUrl', parameters('qdrantApiKeySecretUri'), 'identity', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment')))))))]"
                 },
                 "template": {
                   "containers": [
@@ -2924,43 +2878,11 @@
                         "cpu": "[json('0.5')]",
                         "memory": "1Gi"
                       },
-                      "env": [
-                        {
-                          "name": "QDRANT_URL",
-                          "value": "[parameters('qdrantRestUrl')]"
-                        },
-                        {
-                          "name": "QDRANT_API_KEY",
-                          "secretRef": "qdrant-api-key"
-                        },
-                        {
-                          "name": "STORAGE_ACCOUNT",
-                          "value": "[parameters('storageAccountName')]"
-                        },
-                        {
-                          "name": "RETENTION_DAYS",
-                          "value": "[parameters('retentionDays')]"
-                        },
-                        {
-                          "name": "AZURE_CLIENT_ID",
-                          "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').clientId]"
-                        }
-                      ],
-                      "volumeMounts": [
-                        {
-                          "volumeName": "hub-data",
-                          "mountPath": "/hub-data"
-                        }
-                      ]
+                      "env": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'QDRANT_CA_FILE', 'value', '/etc/buddy-private-trust/ca.pem'))), createArray(createObject('name', 'QDRANT_URL', 'value', parameters('qdrantRestUrl')), createObject('name', 'QDRANT_API_KEY', 'secretRef', variables('databaseSecretName')), createObject('name', 'STORAGE_ACCOUNT', 'value', parameters('storageAccountName')), createObject('name', 'RETENTION_DAYS', 'value', parameters('retentionDays')), createObject('name', 'AZURE_CLIENT_ID', 'value', reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('id-memory-backup-{0}', parameters('environment'))), '2023-01-31').clientId))))]",
+                      "volumeMounts": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('volumeName', 'buddy-private-trust', 'mountPath', '/etc/buddy-private-trust'))), createArray(createObject('volumeName', 'hub-data', 'mountPath', '/hub-data'))))]"
                     }
                   ],
-                  "volumes": [
-                    {
-                      "name": "hub-data",
-                      "storageType": "AzureFile",
-                      "storageName": "hub-data"
-                    }
-                  ]
+                  "volumes": "[flatten(createArray(if(empty(parameters('qdrantCaSecretUri')), createArray(), createArray(createObject('name', 'buddy-private-trust', 'storageType', 'Secret', 'secrets', createArray(createObject('secretRef', 'buddy-private-qdrant-ca', 'path', 'ca.pem'))))), createArray(createObject('name', 'hub-data', 'storageType', 'AzureFile', 'storageName', 'hub-data'))))]"
                 }
               },
               "dependsOn": [

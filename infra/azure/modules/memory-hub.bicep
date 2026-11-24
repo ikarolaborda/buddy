@@ -22,6 +22,9 @@ param qdrantPort string = '6334'
 
 @secure()
 param qdrantApiKeySecretUri string
+param qdrantCaSecretUri string = ''
+
+var databaseSecretName = empty(qdrantCaSecretUri) ? 'qdrant-api-key' : 'buddy-private-qdrant'
 
 @secure()
 param hubSigningKeySecretUri string
@@ -84,8 +87,13 @@ resource hub 'Microsoft.App/containerApps@2024-03-01' = {
         transport: 'http'
       }
       secrets: [
+        ...(empty(qdrantCaSecretUri) ? [] : [{
+          name: 'buddy-private-qdrant-ca'
+          keyVaultUrl: qdrantCaSecretUri
+          identity: identity.id
+        }])
         {
-          name: 'qdrant-api-key'
+          name: databaseSecretName
           keyVaultUrl: qdrantApiKeySecretUri
           identity: identity.id
         }
@@ -118,6 +126,7 @@ resource hub 'Microsoft.App/containerApps@2024-03-01' = {
             memory: '2Gi'
           }
           env: [
+            ...(empty(qdrantCaSecretUri) ? [] : [{ name: 'SSL_CERT_FILE', value: '/etc/buddy-private-trust/ca.pem' }])
             { name: 'HUB_TENANCY', value: 'multi' }
             { name: 'HUB_JOBS_FILE', value: '/app/data/jobs.json' }
             { name: 'HUB_SCHEDULES_FILE', value: '/app/data/schedules.json' }
@@ -125,7 +134,7 @@ resource hub 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'QDRANT_HOST', value: qdrantHost }
             { name: 'QDRANT_PORT', value: qdrantPort }
             { name: 'QDRANT_USE_TLS', value: 'true' }
-            { name: 'QDRANT_API_KEY', secretRef: 'qdrant-api-key' }
+            { name: 'QDRANT_API_KEY', secretRef: databaseSecretName }
             { name: 'HUB_SIGNING_KEY', secretRef: 'hub-signing-key' }
             { name: 'EMBED_BACKEND', value: 'sidecar' }
             { name: 'EMBED_URL', value: 'http://localhost:8000' }
@@ -150,6 +159,7 @@ resource hub 'Microsoft.App/containerApps@2024-03-01' = {
             }
           ]
           volumeMounts: [
+            ...(empty(qdrantCaSecretUri) ? [] : [{ volumeName: 'buddy-private-trust', mountPath: '/etc/buddy-private-trust' }])
             {
               volumeName: 'hub-data'
               mountPath: '/app/data'
@@ -166,6 +176,11 @@ resource hub 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       volumes: [
+        ...(empty(qdrantCaSecretUri) ? [] : [{
+          name: 'buddy-private-trust'
+          storageType: 'Secret'
+          secrets: [{ secretRef: 'buddy-private-qdrant-ca', path: 'ca.pem' }]
+        }])
         {
           name: 'hub-data'
           storageType: 'AzureFile'
